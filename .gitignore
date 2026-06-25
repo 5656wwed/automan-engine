@@ -1,0 +1,31 @@
+# User-requested excludes
+images/
+output/
+dist/
+build/
+
+# Bundled FFmpeg binaries (exceed GitHub's 100 MB file limit; re-downloadable)
+.tools/
+
+# Python cruft
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.cache/
+.tmp/
+
+# Build / packaging artifacts
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

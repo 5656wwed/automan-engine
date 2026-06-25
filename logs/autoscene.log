@@ -1,0 +1,261 @@
+2026-05-23 21:36:10 | INFO     | autoscene.tts.manager | Initialized TTS providers: ['edge', 'inworld']
+2026-05-23 21:36:10 | INFO     | autoscene.core.pipeline | ╔═══════════════════════════════════════════════════╗
+2026-05-23 21:36:10 | INFO     | autoscene.core.pipeline | ║  AutoScene Studio — Rendering: Project 3Scene Demo
+2026-05-23 21:36:10 | INFO     | autoscene.core.pipeline | ║  Scenes: 3 | Resolution: 1920x1080 | FPS: 30
+2026-05-23 21:36:10 | INFO     | autoscene.core.pipeline | ╚═══════════════════════════════════════════════════╝
+2026-05-23 21:36:10 | INFO     | autoscene.core.pipeline | ▸ Stage 1/5: Validating project...
+2026-05-23 21:36:10 | INFO     | autoscene.core.pipeline |   ✓ Project validation passed.
+2026-05-23 21:36:10 | INFO     | autoscene.core.pipeline | ▸ Stage 2/5: Detecting FFmpeg...
+2026-05-23 21:36:10 | INFO     | autoscene.core.pipeline |   ✓ FFmpeg v8.1.1-full_build-www.gyan.dev at C:\Users\leksi\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin\ffmpeg.EXE
+2026-05-23 21:36:10 | INFO     | autoscene.core.pipeline | ▸ Stage 3/5: Rendering scenes (TTS + video)...
+2026-05-23 21:36:10 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 1/3 ═══
+2026-05-23 21:36:10 | INFO     | autoscene.renderer.scene |   Image : 001.png
+2026-05-23 21:36:10 | INFO     | autoscene.renderer.scene |   Script: Deep in the digital realm, a new kind of coding assistant was born.
+2026-05-23 21:36:10 | INFO     | autoscene.renderer.scene |   Voice  : edge / en-US-ChristopherNeural
+2026-05-23 21:36:10 | INFO     | autoscene.tts.manager | Generating TTS [edge] voice=en-US-ChristopherNeural: Deep in the digital realm, a new kind of coding assistant wa...
+2026-05-23 21:36:12 | INFO     | autoscene.tts.edge | Generated Edge TTS audio: scene_001_4372fe28eb9e_voice.mp3 (4.6s)
+2026-05-23 21:36:14 | INFO     | autoscene.ffmpeg.wrapper | [Add 0.5s silence] Completed successfully.
+2026-05-23 21:36:14 | INFO     | autoscene.renderer.scene |   Duration: 4.6s voice + 0.5s padding = 5.1s
+2026-05-23 21:36:14 | INFO     | autoscene.renderer.scene |   Motion : zoom_out
+2026-05-23 21:36:14 | INFO     | autoscene.renderer.scene |   Overlay: 'The Digital Realm' at 0.300s
+2026-05-23 21:36:22 | INFO     | autoscene.ffmpeg.wrapper | [Image->Video (001.png)] Completed successfully.
+2026-05-23 21:36:22 | INFO     | autoscene.ffmpeg.wrapper | [Add audio (scene_001_4372fe28eb9e_voice_padded.mp3)] Completed successfully.
+2026-05-23 21:36:22 | INFO     | autoscene.renderer.scene |   ✓ Scene 1 rendered: scene_001_4372fe28eb9e.mp4
+2026-05-23 21:36:22 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 2/3 ═══
+2026-05-23 21:36:22 | INFO     | autoscene.renderer.scene |   Image : 002.png
+2026-05-23 21:36:22 | INFO     | autoscene.renderer.scene |   Script: Designed by the Google DeepMind team, Antigravity was built to fly above traditi...
+2026-05-23 21:36:22 | INFO     | autoscene.renderer.scene |   Voice  : edge / en-US-ChristopherNeural
+2026-05-23 21:36:22 | INFO     | autoscene.tts.manager | Generating TTS [edge] voice=en-US-ChristopherNeural: Designed by the Google DeepMind team, Antigravity was built ...
+2026-05-23 21:36:24 | INFO     | autoscene.tts.edge | Generated Edge TTS audio: scene_002_8c27d5eb92c3_voice.mp3 (6.4s)
+2026-05-23 21:36:26 | INFO     | autoscene.ffmpeg.wrapper | [Add 0.5s silence] Completed successfully.
+2026-05-23 21:36:26 | INFO     | autoscene.renderer.scene |   Duration: 6.4s voice + 0.5s padding = 6.9s
+2026-05-23 21:36:26 | INFO     | autoscene.renderer.scene |   Motion : zoom_out
+2026-05-23 21:36:26 | INFO     | autoscene.renderer.scene |   Overlay: 'Antigravity' at 0.300s
+2026-05-23 21:36:35 | INFO     | autoscene.ffmpeg.wrapper | [Image->Video (002.png)] Completed successfully.
+2026-05-23 21:36:36 | INFO     | autoscene.ffmpeg.wrapper | [Add audio (scene_002_8c27d5eb92c3_voice_padded.mp3)] Completed successfully.
+2026-05-23 21:36:36 | INFO     | autoscene.renderer.scene |   ✓ Scene 2 rendered: scene_002_8c27d5eb92c3.mp4
+2026-05-23 21:36:36 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 3/3 ═══
+2026-05-23 21:36:36 | INFO     | autoscene.renderer.scene |   Image : 003.png
+2026-05-23 21:36:36 | INFO     | autoscene.renderer.scene |   Script: Now, it's time to merge the scenes and create our final masterpiece.
+2026-05-23 21:36:36 | INFO     | autoscene.renderer.scene |   Voice  : edge / en-US-ChristopherNeural
+2026-05-23 21:36:36 | INFO     | autoscene.tts.manager | Generating TTS [edge] voice=en-US-ChristopherNeural: Now, it's time to merge the scenes and create our final mast...
+2026-05-23 21:36:37 | INFO     | autoscene.tts.edge | Generated Edge TTS audio: scene_003_bc265ea5e681_voice.mp3 (5.0s)
+2026-05-23 21:36:40 | INFO     | autoscene.ffmpeg.wrapper | [Add 0.5s silence] Completed successfully.
+2026-05-23 21:36:40 | INFO     | autoscene.renderer.scene |   Duration: 5.0s voice + 0.5s padding = 5.5s
+2026-05-23 21:36:40 | INFO     | autoscene.renderer.scene |   Motion : zoom_out
+2026-05-23 21:36:40 | INFO     | autoscene.renderer.scene |   Overlay: 'Final Masterpiece' at 0.300s
+2026-05-23 21:36:47 | INFO     | autoscene.ffmpeg.wrapper | [Image->Video (003.png)] Completed successfully.
+2026-05-23 21:36:47 | INFO     | autoscene.ffmpeg.wrapper | [Add audio (scene_003_bc265ea5e681_voice_padded.mp3)] Completed successfully.
+2026-05-23 21:36:47 | INFO     | autoscene.renderer.scene |   ✓ Scene 3 rendered: scene_003_bc265ea5e681.mp4
+2026-05-23 21:36:47 | INFO     | autoscene.core.pipeline |   ✓ All 3 scene clips rendered.
+2026-05-23 21:36:47 | INFO     | autoscene.core.pipeline | ▸ Stage 4/5: Applying transitions & merging...
+2026-05-23 21:36:47 | INFO     | autoscene.core.pipeline |   ✓ Timestamps saved (1 chapter(s)) → C:\Users\leksi\Desktop\NEWYTAUTO\output\timestamps.txt
+2026-05-23 21:36:47 | INFO     | autoscene.transitions.engine | Merging 3 clips | Transitions: ['fade', 'fade']
+2026-05-23 21:37:10 | INFO     | autoscene.transitions.engine |   xfade merged 3 clips → final_video.mp4
+2026-05-23 21:37:10 | INFO     | autoscene.core.pipeline | ╔═══════════════════════════════════════════════════╗
+2026-05-23 21:37:10 | INFO     | autoscene.core.pipeline | ║  ✓ RENDER COMPLETE
+2026-05-23 21:37:10 | INFO     | autoscene.core.pipeline | ║  Output : C:\Users\leksi\Desktop\NEWYTAUTO\output\final_video.mp4
+2026-05-23 21:37:10 | INFO     | autoscene.core.pipeline | ║  Time   : 59.7s
+2026-05-23 21:37:10 | INFO     | autoscene.core.pipeline | ╚═══════════════════════════════════════════════════╝
+2026-06-07 19:55:39 | INFO     | autoscene.tts.manager | Initialized TTS providers: ['edge', 'inworld']
+2026-06-07 19:55:39 | INFO     | autoscene.core.pipeline | ╔═══════════════════════════════════════════════════╗
+2026-06-07 19:55:39 | INFO     | autoscene.core.pipeline | ║  AutoScene Studio — Rendering: List Overlay Feature Test
+2026-06-07 19:55:39 | INFO     | autoscene.core.pipeline | ║  Scenes: 2 | Resolution: 1920x1080 | FPS: 30
+2026-06-07 19:55:39 | INFO     | autoscene.core.pipeline | ╚═══════════════════════════════════════════════════╝
+2026-06-07 19:55:39 | INFO     | autoscene.core.pipeline | ▸ Stage 1/5: Validating project...
+2026-06-07 19:55:39 | INFO     | autoscene.core.pipeline |   ✓ Project validation passed.
+2026-06-07 19:55:39 | INFO     | autoscene.core.pipeline | ▸ Stage 2/5: Detecting FFmpeg...
+2026-06-07 19:55:39 | INFO     | autoscene.core.pipeline |   ✓ FFmpeg v8.1.1-full_build-www.gyan.dev at C:\Users\leksi\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin\ffmpeg.EXE
+2026-06-07 19:55:39 | INFO     | autoscene.core.pipeline | ▸ Stage 3/5: Rendering scenes (TTS + video)...
+2026-06-07 19:55:39 | INFO     | autoscene.renderer.scene | Checking for previously rendered scenes...
+2026-06-07 19:55:39 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 1/2 ═══
+2026-06-07 19:55:39 | INFO     | autoscene.renderer.scene |   Image : 001.png
+2026-06-07 19:55:39 | INFO     | autoscene.renderer.scene |   Script: The Roman commander marshalled the Seventeenth, the Eighteenth, and the Nineteen...
+2026-06-07 19:55:39 | INFO     | autoscene.renderer.scene |   Voice  : edge / en-US-ChristopherNeural
+2026-06-07 19:55:39 | INFO     | autoscene.tts.manager | Generating TTS [edge] voice=en-US-ChristopherNeural: The Roman commander marshalled the Seventeenth, the Eighteen...
+2026-06-07 19:55:42 | INFO     | autoscene.tts.edge | Generated Edge TTS audio: scene_001_088245a21a99_voice.mp3 (12.1s)
+2026-06-07 19:55:44 | INFO     | autoscene.ffmpeg.wrapper | [Add 1.5s silence] Completed successfully.
+2026-06-07 19:55:44 | INFO     | autoscene.renderer.scene |   Duration: 12.1s voice + 1.5s padding = 13.6s
+2026-06-07 19:55:44 | INFO     | autoscene.renderer.scene |   Motion : zoom_out_left
+2026-06-07 19:55:44 | INFO     | autoscene.renderer.scene |   Overlay: '['Seventeenth Legion', 'Eighteenth Legion', 'Nineteenth Legion', 'six auxiliary cohorts', 'three squadrons of cavalry', 'long tail of servants']' at 0.500s
+2026-06-07 19:55:50 | INFO     | autoscene.ffmpeg.wrapper | [Image->Video (001.png)] Completed successfully.
+2026-06-07 19:55:50 | INFO     | autoscene.ffmpeg.wrapper | [Add audio (scene_001_088245a21a99_voice_padded.mp3)] Completed successfully.
+2026-06-07 19:55:50 | INFO     | autoscene.renderer.scene |   ✓ Scene 1 rendered: scene_001_088245a21a99.mp4
+2026-06-07 19:55:50 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 2/2 ═══
+2026-06-07 19:55:50 | INFO     | autoscene.renderer.scene |   Image : 002.png
+2026-06-07 19:55:50 | INFO     | autoscene.renderer.scene |   Script: They carried heavy legions, auxiliary infantry, and extensive baggage trains int...
+2026-06-07 19:55:50 | INFO     | autoscene.renderer.scene |   Voice  : edge / en-US-ChristopherNeural
+2026-06-07 19:55:50 | INFO     | autoscene.tts.manager | Generating TTS [edge] voice=en-US-ChristopherNeural: They carried heavy legions, auxiliary infantry, and extensiv...
+2026-06-07 19:55:52 | INFO     | autoscene.tts.edge | Generated Edge TTS audio: scene_002_85ca6dc00d43_voice.mp3 (7.8s)
+2026-06-07 19:55:54 | INFO     | autoscene.ffmpeg.wrapper | [Add 1.4999999999999991s silence] Completed successfully.
+2026-06-07 19:55:54 | INFO     | autoscene.renderer.scene |   Duration: 7.8s voice + 1.5s padding = 9.3s
+2026-06-07 19:55:54 | INFO     | autoscene.renderer.scene |   Motion : zoom_out
+2026-06-07 19:55:54 | INFO     | autoscene.renderer.scene |   Overlay: '['heavy legions', 'auxiliary infantry', 'baggage trains']' at 0.500s
+2026-06-07 19:55:58 | INFO     | autoscene.ffmpeg.wrapper | [Image->Video (002.png)] Completed successfully.
+2026-06-07 19:55:58 | INFO     | autoscene.ffmpeg.wrapper | [Add audio (scene_002_85ca6dc00d43_voice_padded.mp3)] Completed successfully.
+2026-06-07 19:55:58 | INFO     | autoscene.renderer.scene |   ✓ Scene 2 rendered: scene_002_85ca6dc00d43.mp4
+2026-06-07 19:55:58 | INFO     | autoscene.core.pipeline |   ✓ All 2 scene clips rendered.
+2026-06-07 19:55:59 | INFO     | autoscene.core.pipeline | ▸ Stage 4/5: Applying transitions & merging...
+2026-06-07 19:55:59 | INFO     | autoscene.core.timestamps | Generating AI chapter titles using Groq API...
+2026-06-07 19:55:59 | WARNING  | autoscene.core.timestamps | Groq API returned status 400
+2026-06-07 19:55:59 | INFO     | autoscene.core.pipeline |   ✓ Timestamps saved (1 chapter(s)) → C:\Users\leksi\Desktop\NEWYTAUTO\output\List_Overlay_Feature\timestamps.txt
+2026-06-07 19:55:59 | INFO     | autoscene.transitions.engine | Merging 2 clips | Transitions: ['none']
+2026-06-07 19:55:59 | INFO     | autoscene.transitions.engine | No transitions — using simple concatenation.
+2026-06-07 19:55:59 | INFO     | autoscene.ffmpeg.wrapper | [Final merge] Completed successfully.
+2026-06-07 19:55:59 | INFO     | autoscene.core.pipeline | ▸ Stage 5/5: Mixing background music: Iron_At_Dawn.mp3 (vol=10%)
+2026-06-07 19:56:00 | INFO     | autoscene.ffmpeg.wrapper | [BG music (Iron_At_Dawn.mp3)] Completed successfully.
+2026-06-07 19:56:00 | INFO     | autoscene.core.pipeline |   ✓ Background music applied.
+2026-06-07 19:56:00 | INFO     | autoscene.core.pipeline | ╔═══════════════════════════════════════════════════╗
+2026-06-07 19:56:00 | INFO     | autoscene.core.pipeline | ║  ✓ RENDER COMPLETE
+2026-06-07 19:56:00 | INFO     | autoscene.core.pipeline | ║  Output : C:\Users\leksi\Desktop\NEWYTAUTO\output\List_Overlay_Feature\list_test_output.mp4
+2026-06-07 19:56:00 | INFO     | autoscene.core.pipeline | ║  Time   : 20.6s
+2026-06-07 19:56:00 | INFO     | autoscene.core.pipeline | ╚═══════════════════════════════════════════════════╝
+2026-06-07 20:06:07 | INFO     | autoscene.tts.manager | Initialized TTS providers: ['edge', 'inworld']
+2026-06-07 20:06:07 | INFO     | autoscene.core.pipeline | ╔═══════════════════════════════════════════════════╗
+2026-06-07 20:06:07 | INFO     | autoscene.core.pipeline | ║  AutoScene Studio — Rendering: List Overlay Feature Test
+2026-06-07 20:06:07 | INFO     | autoscene.core.pipeline | ║  Scenes: 2 | Resolution: 1920x1080 | FPS: 30
+2026-06-07 20:06:07 | INFO     | autoscene.core.pipeline | ╚═══════════════════════════════════════════════════╝
+2026-06-07 20:06:07 | INFO     | autoscene.core.pipeline | ▸ Stage 1/5: Validating project...
+2026-06-07 20:06:07 | INFO     | autoscene.core.pipeline |   ✓ Project validation passed.
+2026-06-07 20:06:07 | INFO     | autoscene.core.pipeline | ▸ Stage 2/5: Detecting FFmpeg...
+2026-06-07 20:06:07 | INFO     | autoscene.core.pipeline |   ✓ FFmpeg v8.1.1-full_build-www.gyan.dev at C:\Users\leksi\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin\ffmpeg.EXE
+2026-06-07 20:06:07 | INFO     | autoscene.core.pipeline | ▸ Stage 3/5: Rendering scenes (TTS + video)...
+2026-06-07 20:06:07 | INFO     | autoscene.renderer.scene | Checking for previously rendered scenes...
+2026-06-07 20:06:07 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 1/2 ═══
+2026-06-07 20:06:07 | INFO     | autoscene.renderer.scene |   Image : 001.png
+2026-06-07 20:06:07 | INFO     | autoscene.renderer.scene |   Script: The Roman commander marshalled the Seventeenth, the Eighteenth, and the Nineteen...
+2026-06-07 20:06:07 | INFO     | autoscene.renderer.scene |   Voice  : edge / en-US-ChristopherNeural
+2026-06-07 20:06:07 | INFO     | autoscene.tts.manager | Generating TTS [edge] voice=en-US-ChristopherNeural: The Roman commander marshalled the Seventeenth, the Eighteen...
+2026-06-07 20:06:10 | INFO     | autoscene.tts.edge | Generated Edge TTS audio: scene_001_f214a5e87c51_voice.mp3 (12.1s)
+2026-06-07 20:06:12 | INFO     | autoscene.ffmpeg.wrapper | [Add 1.5s silence] Completed successfully.
+2026-06-07 20:06:12 | INFO     | autoscene.renderer.scene |   Duration: 12.1s voice + 1.5s padding = 13.6s
+2026-06-07 20:06:12 | INFO     | autoscene.renderer.scene |   Motion : zoom_out_left
+2026-06-07 20:06:15 | INFO     | autoscene.ffmpeg.wrapper | [Image->Video (001.png)] Completed successfully.
+2026-06-07 20:06:16 | INFO     | autoscene.ffmpeg.wrapper | [Add audio (scene_001_f214a5e87c51_voice_padded.mp3)] Completed successfully.
+2026-06-07 20:06:16 | INFO     | autoscene.renderer.scene |   ✓ Scene 1 rendered: scene_001_f214a5e87c51.mp4
+2026-06-07 20:06:16 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 2/2 ═══
+2026-06-07 20:06:16 | INFO     | autoscene.renderer.scene |   Image : 002.png
+2026-06-07 20:06:16 | INFO     | autoscene.renderer.scene |   Script: They carried heavy legions, auxiliary infantry, and extensive baggage trains int...
+2026-06-07 20:06:16 | INFO     | autoscene.renderer.scene |   Voice  : edge / en-US-ChristopherNeural
+2026-06-07 20:06:16 | INFO     | autoscene.tts.manager | Generating TTS [edge] voice=en-US-ChristopherNeural: They carried heavy legions, auxiliary infantry, and extensiv...
+2026-06-07 20:06:18 | INFO     | autoscene.tts.edge | Generated Edge TTS audio: scene_002_8ea11c030cfa_voice.mp3 (7.8s)
+2026-06-07 20:06:20 | INFO     | autoscene.ffmpeg.wrapper | [Add 1.4999999999999991s silence] Completed successfully.
+2026-06-07 20:06:20 | INFO     | autoscene.renderer.scene |   Duration: 7.8s voice + 1.5s padding = 9.3s
+2026-06-07 20:06:20 | INFO     | autoscene.renderer.scene |   Motion : zoom_out
+2026-06-07 20:06:20 | INFO     | autoscene.renderer.scene |   Overlay: 'heavy legions; auxiliary infantry; baggage trains' at 0.300s
+2026-06-07 20:06:24 | INFO     | autoscene.ffmpeg.wrapper | [Image->Video (002.png)] Completed successfully.
+2026-06-07 20:06:24 | INFO     | autoscene.ffmpeg.wrapper | [Add audio (scene_002_8ea11c030cfa_voice_padded.mp3)] Completed successfully.
+2026-06-07 20:06:24 | INFO     | autoscene.renderer.scene |   ✓ Scene 2 rendered: scene_002_8ea11c030cfa.mp4
+2026-06-07 20:06:24 | INFO     | autoscene.core.pipeline |   ✓ All 2 scene clips rendered.
+2026-06-07 20:06:24 | INFO     | autoscene.core.pipeline | ▸ Stage 4/5: Applying transitions & merging...
+2026-06-07 20:06:24 | INFO     | autoscene.core.timestamps | Generating AI chapter titles using Groq API...
+2026-06-07 20:06:24 | WARNING  | autoscene.core.timestamps | Groq API returned status 401
+2026-06-07 20:06:24 | INFO     | autoscene.core.pipeline |   ✓ Timestamps saved (1 chapter(s)) → C:\Users\leksi\Desktop\NEWYTAUTO\output\List_Overlay_Feature\timestamps.txt
+2026-06-07 20:06:24 | INFO     | autoscene.transitions.engine | Merging 2 clips | Transitions: ['none']
+2026-06-07 20:06:24 | INFO     | autoscene.transitions.engine | No transitions — using simple concatenation.
+2026-06-07 20:06:25 | INFO     | autoscene.ffmpeg.wrapper | [Final merge] Completed successfully.
+2026-06-07 20:06:25 | INFO     | autoscene.core.pipeline | ▸ Stage 5/5: Mixing background music: Epic Battle Theme, Glorious and Gritty.mp3 (vol=10%)
+2026-06-07 20:06:25 | INFO     | autoscene.ffmpeg.wrapper | [BG music (Epic Battle Theme, Glorious and Gritty.mp3)] Completed successfully.
+2026-06-07 20:06:25 | INFO     | autoscene.core.pipeline |   ✓ Background music applied.
+2026-06-07 20:06:25 | INFO     | autoscene.core.pipeline | ╔═══════════════════════════════════════════════════╗
+2026-06-07 20:06:25 | INFO     | autoscene.core.pipeline | ║  ✓ RENDER COMPLETE
+2026-06-07 20:06:25 | INFO     | autoscene.core.pipeline | ║  Output : C:\Users\leksi\Desktop\NEWYTAUTO\output\List_Overlay_Feature\list_test_output.mp4
+2026-06-07 20:06:25 | INFO     | autoscene.core.pipeline | ║  Time   : 17.9s
+2026-06-07 20:06:25 | INFO     | autoscene.core.pipeline | ╚═══════════════════════════════════════════════════╝
+2026-06-07 21:02:38 | INFO     | autoscene.tts.manager | Initialized TTS providers: ['edge', 'inworld']
+2026-06-07 21:02:38 | INFO     | autoscene.core.pipeline | ╔═══════════════════════════════════════════════════╗
+2026-06-07 21:02:38 | INFO     | autoscene.core.pipeline | ║  AutoScene Studio — Rendering: Trigger Overlay Feature Test
+2026-06-07 21:02:38 | INFO     | autoscene.core.pipeline | ║  Scenes: 3 | Resolution: 1920x1080 | FPS: 30
+2026-06-07 21:02:38 | INFO     | autoscene.core.pipeline | ╚═══════════════════════════════════════════════════╝
+2026-06-07 21:02:38 | INFO     | autoscene.core.pipeline | ▸ Stage 1/5: Validating project...
+2026-06-07 21:02:38 | INFO     | autoscene.core.pipeline |   ✓ Project validation passed.
+2026-06-07 21:02:38 | INFO     | autoscene.core.pipeline | ▸ Stage 2/5: Detecting FFmpeg...
+2026-06-07 21:02:38 | INFO     | autoscene.core.pipeline |   ✓ FFmpeg v8.1.1-full_build-www.gyan.dev at C:\Users\leksi\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin\ffmpeg.EXE
+2026-06-07 21:02:38 | INFO     | autoscene.core.pipeline | ▸ Stage 3/5: Rendering scenes (TTS + video)...
+2026-06-07 21:02:38 | INFO     | autoscene.renderer.scene | Checking for previously rendered scenes...
+2026-06-07 21:02:38 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 1/3 ═══
+2026-06-07 21:02:38 | INFO     | autoscene.renderer.scene |   Image : 001.png
+2026-06-07 21:02:38 | INFO     | autoscene.renderer.scene |   Script: The night of the seventeenth of June, in the year fourteen sixty two, smelled of...
+2026-06-07 21:02:38 | INFO     | autoscene.renderer.scene |   Voice  : edge / en-US-ChristopherNeural
+2026-06-07 21:02:38 | INFO     | autoscene.tts.manager | Generating TTS [edge] voice=en-US-ChristopherNeural: The night of the seventeenth of June, in the year fourteen s...
+2026-06-07 21:02:41 | INFO     | autoscene.tts.edge | Generated Edge TTS audio: scene_001_59ead48b3451_voice.mp3 (8.3s)
+2026-06-07 21:02:43 | INFO     | autoscene.ffmpeg.wrapper | [Add 1.5s silence] Completed successfully.
+2026-06-07 21:02:43 | INFO     | autoscene.renderer.scene |   Duration: 8.3s voice + 1.5s padding = 9.8s
+2026-06-07 21:02:43 | INFO     | autoscene.renderer.scene |   Motion : zoom_out_left
+2026-06-07 21:02:43 | INFO     | autoscene.renderer.scene |   Overlay: 'June 1462' at 0.300s
+2026-06-07 21:02:46 | INFO     | autoscene.ffmpeg.wrapper | [Image->Video (001.png)] Completed successfully.
+2026-06-07 21:02:46 | INFO     | autoscene.ffmpeg.wrapper | [Add audio (scene_001_59ead48b3451_voice_padded.mp3)] Completed successfully.
+2026-06-07 21:02:46 | INFO     | autoscene.renderer.scene |   ✓ Scene 1 rendered: scene_001_59ead48b3451.mp4
+2026-06-07 21:02:46 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 2/3 ═══
+2026-06-07 21:02:46 | INFO     | autoscene.renderer.scene |   Image : 002.png
+2026-06-07 21:02:46 | INFO     | autoscene.renderer.scene |   Script: The Ottoman camp stretched across the Wallachian plain like a sleeping city, ten...
+2026-06-07 21:02:46 | INFO     | autoscene.renderer.scene |   Voice  : edge / en-US-ChristopherNeural
+2026-06-07 21:02:46 | INFO     | autoscene.tts.manager | Generating TTS [edge] voice=en-US-ChristopherNeural: The Ottoman camp stretched across the Wallachian plain like ...
+2026-06-07 21:02:48 | INFO     | autoscene.tts.edge | Generated Edge TTS audio: scene_002_5f0768aefde7_voice.mp3 (11.2s)
+2026-06-07 21:02:50 | INFO     | autoscene.ffmpeg.wrapper | [Add 1.5s silence] Completed successfully.
+2026-06-07 21:02:50 | INFO     | autoscene.renderer.scene |   Duration: 11.2s voice + 1.5s padding = 12.7s
+2026-06-07 21:02:50 | INFO     | autoscene.renderer.scene |   Motion : zoom_out
+2026-06-07 21:02:50 | INFO     | autoscene.renderer.scene |   Overlay: 'Ottoman Camp' at 0.300s
+2026-06-07 21:02:53 | INFO     | autoscene.ffmpeg.wrapper | [Image->Video (002.png)] Completed successfully.
+2026-06-07 21:02:54 | INFO     | autoscene.ffmpeg.wrapper | [Add audio (scene_002_5f0768aefde7_voice_padded.mp3)] Completed successfully.
+2026-06-07 21:02:54 | INFO     | autoscene.renderer.scene |   ✓ Scene 2 rendered: scene_002_5f0768aefde7.mp4
+2026-06-07 21:02:54 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 3/3 ═══
+2026-06-07 21:02:54 | INFO     | autoscene.renderer.scene |   Image : 003.png
+2026-06-07 21:02:54 | INFO     | autoscene.renderer.scene |   Script: With him went the Seventeenth, the Eighteenth, and the Nineteenth Legions, aroun...
+2026-06-07 21:02:54 | INFO     | autoscene.renderer.scene |   Voice  : edge / en-US-ChristopherNeural
+2026-06-07 21:02:54 | INFO     | autoscene.tts.manager | Generating TTS [edge] voice=en-US-ChristopherNeural: With him went the Seventeenth, the Eighteenth, and the Ninet...
+2026-06-07 21:02:56 | INFO     | autoscene.tts.edge | Generated Edge TTS audio: scene_003_f141de1246ad_voice.mp3 (11.3s)
+2026-06-07 21:02:58 | INFO     | autoscene.ffmpeg.wrapper | [Add 1.5s silence] Completed successfully.
+2026-06-07 21:02:58 | INFO     | autoscene.renderer.scene |   Duration: 11.3s voice + 1.5s padding = 12.8s
+2026-06-07 21:02:58 | INFO     | autoscene.renderer.scene |   Motion : zoom_out_right
+2026-06-07 21:02:58 | INFO     | autoscene.renderer.scene |   Overlay list: 5 items, first at 0.500s
+2026-06-07 21:03:02 | INFO     | autoscene.ffmpeg.wrapper | [Image->Video (003.png)] Completed successfully.
+2026-06-07 21:03:03 | INFO     | autoscene.ffmpeg.wrapper | [Add audio (scene_003_f141de1246ad_voice_padded.mp3)] Completed successfully.
+2026-06-07 21:03:03 | INFO     | autoscene.renderer.scene |   ✓ Scene 3 rendered: scene_003_f141de1246ad.mp4
+2026-06-07 21:03:03 | INFO     | autoscene.core.pipeline |   ✓ All 3 scene clips rendered.
+2026-06-07 21:03:03 | INFO     | autoscene.core.pipeline | ▸ Stage 4/5: Applying transitions & merging...
+2026-06-07 21:03:03 | INFO     | autoscene.core.timestamps | Generating AI chapter titles using Groq API...
+2026-06-07 21:03:03 | WARNING  | autoscene.core.timestamps | Groq API returned status 400
+2026-06-07 21:03:03 | INFO     | autoscene.core.pipeline |   ✓ Timestamps saved (1 chapter(s)) → C:\Users\leksi\Desktop\NEWYTAUTO\output\Trigger_Overlay_Feature\timestamps.txt
+2026-06-07 21:03:03 | INFO     | autoscene.transitions.engine | Merging 3 clips | Transitions: ['none', 'none']
+2026-06-07 21:03:03 | INFO     | autoscene.transitions.engine | No transitions — using simple concatenation.
+2026-06-07 21:03:03 | INFO     | autoscene.ffmpeg.wrapper | [Final merge] Completed successfully.
+2026-06-07 21:03:03 | INFO     | autoscene.core.pipeline | ▸ Stage 5/5: Mixing background music: Clash of Titans.mp3 (vol=10%)
+2026-06-07 21:03:04 | INFO     | autoscene.ffmpeg.wrapper | [BG music (Clash of Titans.mp3)] Completed successfully.
+2026-06-07 21:03:04 | INFO     | autoscene.core.pipeline |   ✓ Background music applied.
+2026-06-07 21:03:04 | INFO     | autoscene.core.pipeline | ╔═══════════════════════════════════════════════════╗
+2026-06-07 21:03:04 | INFO     | autoscene.core.pipeline | ║  ✓ RENDER COMPLETE
+2026-06-07 21:03:04 | INFO     | autoscene.core.pipeline | ║  Output : C:\Users\leksi\Desktop\NEWYTAUTO\output\Trigger_Overlay_Feature\trigger_test_output.mp4
+2026-06-07 21:03:04 | INFO     | autoscene.core.pipeline | ║  Time   : 26.0s
+2026-06-07 21:03:04 | INFO     | autoscene.core.pipeline | ╚═══════════════════════════════════════════════════╝
+2026-06-13 22:48:37 | INFO     | autoscene.tts.manager | Initialized TTS providers: ['edge', 'inworld']
+2026-06-13 22:48:37 | INFO     | autoscene.core.pipeline | ╔═══════════════════════════════════════════════════╗
+2026-06-13 22:48:37 | INFO     | autoscene.core.pipeline | ║  AutoScene Studio — Rendering: Battle of Achelous, 917 AD - Byzantine Empire sets out to punish Simeon of Bulgaria
+2026-06-13 22:48:37 | INFO     | autoscene.core.pipeline | ║  Scenes: 244 | Resolution: 1920x1080 | FPS: 30
+2026-06-13 22:48:37 | INFO     | autoscene.core.pipeline | ╚═══════════════════════════════════════════════════╝
+2026-06-13 22:48:37 | INFO     | autoscene.core.pipeline | ▸ Stage 1/5: Validating project...
+2026-06-13 22:48:37 | INFO     | autoscene.core.pipeline |   ✓ Project validation passed.
+2026-06-13 22:48:37 | INFO     | autoscene.core.pipeline | ▸ Stage 2/5: Detecting FFmpeg...
+2026-06-13 22:48:37 | INFO     | autoscene.core.pipeline |   ✓ FFmpeg v8.1.1-full_build-www.gyan.dev at C:\Users\leksi\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin\ffmpeg.EXE
+2026-06-13 22:48:37 | INFO     | autoscene.core.pipeline | ▸ Stage 3/5: Rendering scenes (TTS + video)...
+2026-06-13 22:48:37 | INFO     | autoscene.renderer.scene | Checking for previously rendered scenes...
+2026-06-13 22:48:38 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 1/244 ═══
+2026-06-13 22:48:38 | INFO     | autoscene.renderer.scene |   Image : 001.mp4
+2026-06-13 22:48:38 | INFO     | autoscene.renderer.scene |   Script: Seventy-five years after the battle, the historian Leo the Deacon walked the pla...
+2026-06-13 22:48:38 | INFO     | autoscene.renderer.scene |   Voice  : default / default
+2026-06-13 22:48:38 | INFO     | autoscene.tts.manager | Generating TTS [inworld] voice=Liam: Seventy-five years after the battle, the historian Leo the D...
+2026-06-13 22:48:40 | INFO     | autoscene.tts.inworld | Generated Inworld audio: scene_001_124908274b95_voice.mp3 (7.0s)
+2026-06-13 22:48:42 | INFO     | autoscene.renderer.scene |   Extended scene duration to 9.6s to allow overlay to finish.
+2026-06-13 22:48:42 | INFO     | autoscene.ffmpeg.wrapper | [Add 2.5922219999999987s silence] Completed successfully.
+2026-06-13 22:48:42 | INFO     | autoscene.renderer.scene |   Duration: 7.0s voice + 2.6s padding = 9.6s
+2026-06-13 22:48:42 | INFO     | autoscene.renderer.scene |   Source : MP4 video — trimmed to 9.6s, Ken Burns skipped
+2026-06-13 22:48:42 | INFO     | autoscene.renderer.scene |   Overlay: 'Anchialus' at 6.130s
+2026-06-13 22:48:42 | INFO     | autoscene.ffmpeg.wrapper |   [mp4_to_clip] 001.mp4: 8.0s → stretching to 9.6s (×1.20)
+2026-06-13 22:48:58 | INFO     | autoscene.ffmpeg.wrapper | [Video->Clip (001.mp4)] Completed successfully.
+2026-06-13 22:48:58 | INFO     | autoscene.ffmpeg.wrapper | [Add audio (scene_001_124908274b95_voice_padded.mp3)] Completed successfully.
+2026-06-13 22:48:58 | INFO     | autoscene.renderer.scene |   ✓ Scene 1 rendered: scene_001_124908274b95.mp4
+2026-06-13 22:48:58 | INFO     | autoscene.renderer.scene | ═══ Rendering Scene 2/244 ═══
+2026-06-13 22:48:58 | INFO     | autoscene.renderer.scene |   Image : 002.mp4
+2026-06-13 22:48:58 | INFO     | autoscene.renderer.scene |   Script: and found it still scattered with tens of thousands of Roman bones.
+2026-06-13 22:48:58 | INFO     | autoscene.renderer.scene |   Voice  : default / default
+2026-06-13 22:48:58 | INFO     | autoscene.tts.manager | Generating TTS [inworld] voice=Liam: and found it still scattered with tens of thousands of Roman...
