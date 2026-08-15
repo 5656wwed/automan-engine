@@ -9,11 +9,13 @@ from typing import Optional
 from app.core.config import TTSProvider as TTSProviderEnum, get_config
 from app.tts.base import TTSProvider, TTSResult, Voice
 from app.tts.edge_provider import EdgeTTSProvider
+from app.tts.pocket_provider import PocketTTSProvider
 from app.tts.elevenlabs_provider import ElevenLabsProvider
 from app.tts.openai_provider import OpenAIProvider
 from app.tts.ai33pro_provider import AI33ProProvider
 from app.tts.fish_audio_provider import FishAudioProvider
 from app.tts.inworld_provider import InworldProvider
+from app.tts.kokoro_provider import KokoroProvider
 from app.utils.logger import get_logger
 
 log = get_logger("tts.manager")
@@ -33,6 +35,14 @@ class VoiceManager:
 
         # Always register Edge (free)
         self._providers["edge"] = EdgeTTSProvider()
+
+        # Local Pocket TTS (free voice cloning) — register if the server is up
+        pocket = PocketTTSProvider()
+        if pocket.is_available():
+            self._providers["pocket"] = pocket
+            log.info("Pocket TTS server detected — registered 'pocket' provider")
+        else:
+            log.info("Pocket TTS not reachable — 'pocket' provider not registered")
 
         # Conditionally register paid providers
         el = ElevenLabsProvider()
@@ -61,6 +71,9 @@ class VoiceManager:
         # Always register so premade voices are browsable; generate() will
         # raise if the key is missing when synthesis is actually attempted.
         self._providers["inworld"] = inworld
+
+        # Kokoro (OpenAI-compatible local/GPU server) — always registered.
+        self._providers["kokoro"] = KokoroProvider()
 
         log.info(f"Initialized TTS providers: {list(self._providers.keys())}")
 
@@ -148,6 +161,12 @@ class VoiceManager:
         """Generate speech using the specified or default provider."""
         prov = self.get_provider(provider)
         vid = voice_id or get_config().tts.voice_id
+
+        # Clean names/symbols/numerals for EVERY provider (Edge, Pocket, Kokoro, ...).
+        # Original script spelling is preserved for subtitles/overlays — only the
+        # audio hears the cleaned version.
+        from app.tts.pronunciation import clean_for_tts
+        text = clean_for_tts(text)
 
         log.info(f"Generating TTS [{prov.provider_name}] voice={vid}: {text[:60]}...")
 

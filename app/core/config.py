@@ -29,6 +29,8 @@ class TTSProvider(str, Enum):
     AI33PRO = "ai33pro"
     FISHAUDIO = "fishaudio"
     INWORLD = "inworld"
+    POCKET = "pocket"
+    KOKORO = "kokoro"
 
 
 class MotionType(str, Enum):

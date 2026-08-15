@@ -56,7 +56,7 @@ class FishAudioProvider(TTSProvider):
         url = f"{BASE_URL}/v1/tts"
         # model header is required for Fish Audio
         headers = self._headers()
-        headers["model"] = kwargs.get("model", "s2-pro")
+        headers["model"] = kwargs.get("model", "s2.1-pro-free")  # free tier; change to s2.1-pro or s2-pro for paid
 
         # Map linear volume (1.0 = 100%) to Fish Audio dB range (-10 to +10)
         fa_volume = round(max(-10.0, min(10.0, (kwargs.get("volume", 1.0) - 1.0) * 10)), 1)
@@ -101,6 +101,39 @@ class FishAudioProvider(TTSProvider):
         if not self._api_key:
             return []
 
+        import os as _os
+        extra = _os.environ.get("FISH_EXTRA_VOICES", "")
+
+        # When FISH_EXTRA_VOICES is set, show ONLY those curated voices —
+        # do NOT flood the dropdown with every public/clone model on the account.
+        # A file at FISH_VOICES_FILE (one "id|Title" per line) is also supported,
+        # since systemd's Environment= cannot hold names with spaces/parens.
+        if not extra.strip():
+            _voices_file = _os.environ.get("FISH_VOICES_FILE", "")
+            if not _voices_file:
+                _voices_file = str(Path(__file__).resolve().parent.parent.parent / "fish_voices.txt")
+            _vf = Path(_voices_file)
+            if _vf.exists():
+                extra = "\n".join(l for l in _vf.read_text(encoding="utf-8").splitlines() if l.strip())
+
+        if extra.strip():
+            voices: list[Voice] = []
+            for piece in extra.replace("\n", ";").split(";"):
+                piece = piece.strip()
+                if not piece or "|" not in piece:
+                    continue
+                vid, title = piece.split("|", 1)
+                vid, title = vid.strip(), title.strip()
+                if vid and title:
+                    voices.append(Voice(
+                        voice_id=vid, name=f"{title} (FishAudio)",
+                        provider=self.provider_name, language="en",
+                        gender="unknown", preview_url=None,
+                        metadata={"type": "model", "is_clone": False},
+                    ))
+            log.info(f"Fish Audio voices loaded (curated only): {len(voices)} total")
+            return voices
+
         voices: list[Voice] = []
         async with aiohttp.ClientSession(timeout=DEFAULT_TIMEOUT) as session:
             # 1. Fetch personal cloned voices
@@ -110,6 +143,7 @@ class FishAudioProvider(TTSProvider):
 
         # Sort clones to the top
         voices.sort(key=lambda v: 0 if v.metadata.get("is_clone") else 1)
+
         log.info(f"Fish Audio voices loaded: {len(voices)} total")
         return voices
 

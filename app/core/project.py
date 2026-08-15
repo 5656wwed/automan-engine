@@ -158,6 +158,16 @@ class ProjectConfig(BaseModel):
     subtitles_enabled: bool = False
     subtitles_style: str = "auto"
     font_path: Optional[str] = None
+    color_filter: Optional[str] = None  # name of a .cube LUT in theautoman/luts/
+    filter_intensity: Optional[float] = Field(default=None, ge=0.0, le=1.0)  # LUT blend 0-1
+    brightness: Optional[float] = None   # eq brightness -1..1
+    contrast: Optional[float] = None     # eq contrast 0..2 (1 neutral)
+    saturation: Optional[float] = None   # eq saturation 0..3 (1 neutral)
+    warmth: Optional[float] = None       # -1..1 warm/cool
+    music_name: Optional[str] = None     # name of an uploaded background-music file (theautoman/music/)
+    music_volume: Optional[float] = Field(default=None, ge=0.0, le=1.0)  # 0-1
+    mute_original: bool = False          # drop the clip's own audio
+    music_loop: bool = True              # loop the music if it's shorter than the clip
     scenes: list[SceneConfig] = Field(min_length=1)
 
     @field_validator("scenes")

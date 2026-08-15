@@ -28,6 +28,8 @@ def _scene_cache_key(
     subtitles_enabled: bool = False,
     subtitles_style: str = "auto",
     font_path: Optional[str] = None,
+    color_filter: Optional[str] = None,
+    music_cfg: Optional[str] = None,
 ) -> str:
     if isinstance(overlay_text, list):
         overlay_str = "||".join(f"{o.text}:{o.trigger}" for o in overlay_text)
@@ -46,7 +48,12 @@ def _scene_cache_key(
         str(subtitles_enabled),
         subtitles_style,
         font_path or "",
+        color_filter or "",
+        music_cfg or "",
     ]
+    # Re-render when the pronunciation dictionary changes.
+    from app.tts.pronunciation import pronunciation_version
+    parts.append(pronunciation_version())
     digest = hashlib.md5("|".join(parts).encode("utf-8")).hexdigest()
     return digest[:12]
 
@@ -488,6 +495,39 @@ class SceneRenderer:
             
         return font_path
 
+    def _resolve_lut(self, name: str) -> Optional[Path]:
+        """Resolve a .cube LUT by name from theautoman/luts/ (case-insensitive)."""
+        if not name:
+            return None
+        luts_dir = Path(__file__).resolve().parent.parent.parent / "luts"
+        if not luts_dir.exists():
+            return None
+        # exact or with .cube appended
+        for candidate in (luts_dir / name, luts_dir / f"{name}.cube"):
+            if candidate.exists():
+                return candidate
+        low = name.lower()
+        for f in luts_dir.glob("*.cube"):
+            if f.stem.lower() == low:
+                return f
+        return None
+
+    def _resolve_music(self, name) -> Optional[Path]:
+        """Resolve an uploaded background-music file by name (theautoman/music/)."""
+        if not name:
+            return None
+        music_dir = Path(__file__).resolve().parent.parent.parent / "music"
+        if not music_dir.exists():
+            return None
+        for candidate in (music_dir / str(name), music_dir / f"{name}.mp3", music_dir / f"{name}.wav"):
+            if candidate.exists():
+                return candidate
+        low = str(name).lower()
+        for f in music_dir.iterdir():
+            if f.is_file() and f.stem.lower() == low:
+                return f
+        return None
+
     async def render_scene(
         self,
         scene: SceneConfig,
@@ -572,6 +612,11 @@ class SceneRenderer:
             getattr(self.project.config, "subtitles_enabled", False),
             getattr(self.project.config, "subtitles_style", "auto") or "auto",
             font_path=font_path_str,
+            color_filter=getattr(self.project.config, "color_filter", None),
+            music_cfg=str((getattr(self.project.config, "music_name", None) or "")
+                          + "|" + str(getattr(self.project.config, "music_volume", None) or "")
+                          + "|" + str(getattr(self.project.config, "mute_original", False))
+                          + "|" + str(getattr(self.project.config, "music_loop", True))),
         )
         
         final_clip = self._work_dir / f"{prefix}_{cache_key}.mp4"
@@ -743,6 +788,21 @@ class SceneRenderer:
 
         overlay_filters = overlay_filters if overlay_filters else None
 
+        # CapCut-style 3D LUT + adjustment color grading (every scene)
+        from app.ffmpeg.color_filter import build_color_chain
+        pc = self.project.config
+        color_chain = build_color_chain(
+            getattr(pc, "color_filter", None),
+            intensity=getattr(pc, "filter_intensity", None),
+            brightness=getattr(pc, "brightness", None),
+            contrast=getattr(pc, "contrast", None),
+            saturation=getattr(pc, "saturation", None),
+            warmth=getattr(pc, "warmth", None),
+        )
+        if color_chain:
+            overlay_filters = list(overlay_filters or []) + [color_chain]
+            log.info(f"  Color grade: {color_chain}")
+
         loop = asyncio.get_event_loop()
         if is_mp4:
             await loop.run_in_executor(
@@ -777,6 +837,12 @@ class SceneRenderer:
         _bg_audio = Path(scene.image) if is_mp4 else None
         _bg_vol   = get_config().mp4_bg_volume
         _voice_vol = voice_volume
+        # background music + mute original
+        pc = self.project.config
+        _music_path = self._resolve_music(getattr(pc, "music_name", None))
+        _music_vol  = getattr(pc, "music_volume", None) or 0.3
+        _mute_bg    = bool(getattr(pc, "mute_original", False))
+        _music_loop = bool(getattr(pc, "music_loop", True))
         await loop.run_in_executor(
             None,
             lambda: add_audio_to_video(
@@ -791,6 +857,10 @@ class SceneRenderer:
                 bg_audio_path=_bg_audio,
                 bg_audio_volume=_bg_vol,
                 voice_volume=_voice_vol,
+                music_path=_music_path,
+                music_volume=_music_vol,
+                mute_bg=_mute_bg,
+                music_loop=_music_loop,
             ),
         )
 

@@ -141,12 +141,17 @@ def mp4_to_clip(
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
     ]
 
+    # If the clip is shorter than the narration, LOOP it (continuous
+    # cycle) instead of stretching it. Stretching produces ugly slow-motion;
+    # a repeating loop reads as natural b-roll and fills the gap cleanly.
+    # The final `-t duration` trims the (possibly looped) stream down to
+    # exactly the narration length.
+    input_loop = []
     if src_duration > 0 and src_duration < duration:
-        ratio = duration / src_duration
-        filters.append(f"setpts={ratio:.6f}*PTS")
+        input_loop = ["-stream_loop", "-1"]
         log.info(
             f"  [mp4_to_clip] {Path(video_path).name}: "
-            f"{src_duration:.1f}s → stretching to {duration:.1f}s (×{ratio:.2f})"
+            f"{src_duration:.1f}s < narration {duration:.1f}s → looping to fill"
         )
     else:
         log.info(
@@ -161,18 +166,21 @@ def mp4_to_clip(
 
     filter_str = ",".join(filters)
 
-    args = [
-        "-i", str(video_path),
-        "-vf", filter_str,
-        "-t", str(duration),
-        "-an",
-        "-c:v", export.codec,
-        "-crf", str(export.crf),
-        "-preset", export.preset_speed,
-        "-pix_fmt", export.pixel_format,
-        "-r", str(fps),
-        str(output_path),
-    ]
+    args = (
+        input_loop
+        + [
+            "-i", str(video_path),
+            "-vf", filter_str,
+            "-t", str(duration),
+            "-an",
+            "-c:v", export.codec,
+            "-crf", str(export.crf),
+            "-preset", export.preset_speed,
+            "-pix_fmt", export.pixel_format,
+            "-r", str(fps),
+            str(output_path),
+        ]
+    )
     desc = f"Video->Clip ({Path(video_path).name})"
     try:
         _run_ffmpeg(args, description=desc)
@@ -261,127 +269,70 @@ def add_audio_to_video(
     bg_audio_path: Optional[Path] = None,
     bg_audio_volume: float = 0.15,
     voice_volume: float = 1.0,
+    music_path: Optional[Path] = None,
+    music_volume: float = 0.3,
+    mute_bg: bool = False,
+    music_loop: bool = True,
 ) -> None:
-    """Overlay audio onto a video, optionally mixing SFX and/or MP4 background audio.
+    """Overlay narration onto a video, optionally mixing SFX, the clip's own
+    audio (bg), and/or an uploaded background-music track.
 
-    bg_audio_path: original MP4 audio track, attenuated to bg_audio_volume
-                   (0.15 ≈ −16.5 dB, roughly 15% of original level).
+    Inputs (added only when present):
+        0 = video, 1 = voice(TTS), 2 = sfx, 3 = clip-bg, 4 = music
+    `mute_bg=True` drops the clip's original audio entirely.
+    `music_path` is a background-music file mixed at `music_volume`;
+    `music_loop=True` loops it (via -stream_loop) so it covers the full clip.
     """
     if export is None:
         export = get_config().export
 
     has_sfx = bool(sfx_path and Path(sfx_path).exists())
-    has_bg  = bool(bg_audio_path and Path(bg_audio_path).exists())
+    has_bg  = bool(bg_audio_path and Path(bg_audio_path).exists()) and not mute_bg
+    has_music = bool(music_path and Path(music_path).exists())
 
-    if has_sfx and has_bg:
-        # MP4 scene with overlay: voice + sfx whoosh + mp4 bg audio
-        # Inputs: 0=video  1=TTS  2=sfx  3=mp4
-        af = (
-            f"[2:a]adelay={sfx_delay_ms}|{sfx_delay_ms},volume={sfx_volume}[sfx];"
-            f"[3:a]volume={bg_audio_volume:.3f}[bg];"
-            f"[1:a]adelay=200|200,volume={voice_volume:.3f}[voice];"
-            f"[sfx][voice][bg]amix=inputs=3:duration=longest"
-        )
-        if duration:
-            af += f",apad=whole_dur={duration:.3f}"
-        af += "[a]"
-        args = [
-            "-i", str(video_path),
-            "-i", str(audio_path),
-            "-i", str(sfx_path),
-            "-i", str(bg_audio_path),
-            "-filter_complex", af,
-            "-map", "0:v",
-            "-map", "[a]",
-            "-c:v", "copy",
-            "-c:a", export.audio_codec,
-            "-b:a", export.audio_bitrate,
-            "-ar", "44100",
-            "-ac", "2",
-            "-shortest",
-            str(output_path),
-        ]
+    inputs = ["-i", str(video_path), "-i", str(audio_path)]
+    parts = [f"[1:a]adelay=200|200,volume={voice_volume:.3f}[voice]"]
+    mix = ["[voice]"]
 
-    elif has_sfx:
-        # Image scene with overlay: voice + sfx whoosh
-        # Inputs: 0=video  1=TTS  2=sfx
-        af = (
-            f"[2:a]adelay={sfx_delay_ms}|{sfx_delay_ms},volume={sfx_volume}[sfx];"
-            f"[1:a]adelay=200|200,volume={voice_volume:.3f}[voice];"
-            f"[sfx][voice]amix=inputs=2:duration=longest"
-        )
-        if duration:
-            af += f",apad=whole_dur={duration:.3f}"
-        af += "[a]"
-        args = [
-            "-i", str(video_path),
-            "-i", str(audio_path),
-            "-i", str(sfx_path),
-            "-filter_complex", af,
-            "-map", "0:v",
-            "-map", "[a]",
-            "-c:v", "copy",
-            "-c:a", export.audio_codec,
-            "-b:a", export.audio_bitrate,
-            "-ar", "44100",
-            "-ac", "2",
-            "-shortest",
-            str(output_path),
-        ]
+    if has_sfx:
+        idx = len(inputs) // 2
+        inputs += ["-i", str(sfx_path)]
+        parts.append(f"[{idx}:a]adelay={sfx_delay_ms}|{sfx_delay_ms},volume={sfx_volume:.3f}[sfx]")
+        mix.append("[sfx]")
+    if has_bg:
+        idx = len(inputs) // 2
+        inputs += ["-i", str(bg_audio_path)]
+        parts.append(f"[{idx}:a]volume={bg_audio_volume:.3f}[bg]")
+        mix.append("[bg]")
+    if has_music:
+        idx = len(inputs) // 2
+        if music_loop:
+            inputs += ["-stream_loop", "-1"]
+        inputs += ["-i", str(music_path)]
+        parts.append(f"[{idx}:a]volume={music_volume:.3f}[music]")
+        mix.append("[music]")
 
-    elif has_bg:
-        # MP4 scene without overlay: voice (full) + mp4 bg audio (attenuated)
-        # Inputs: 0=video  1=TTS  2=mp4
-        af = (
-            f"[2:a]volume={bg_audio_volume:.3f}[bg];"
-            f"[1:a]volume={voice_volume:.3f}[voice];"
-            f"[voice][bg]amix=inputs=2:duration=first:normalize=0[a]"
-        )
-        args = [
-            "-i", str(video_path),
-            "-i", str(audio_path),
-            "-i", str(bg_audio_path),
-            "-filter_complex", af,
-            "-map", "0:v",
-            "-map", "[a]",
-            "-c:v", "copy",
-            "-c:a", export.audio_codec,
-            "-b:a", export.audio_bitrate,
-            "-ar", "44100",
-            "-ac", "2",
-            "-shortest",
-            str(output_path),
-        ]
-
+    if len(mix) == 1:
+        # only voice
+        af = f"[1:a]adelay=200|200,volume={voice_volume:.3f}"
     else:
-        # Plain: video + TTS voice only
-        if voice_volume != 1.0:
-            args = [
-                "-i", str(video_path),
-                "-i", str(audio_path),
-                "-filter_complex", f"[1:a]volume={voice_volume:.3f}[a]",
-                "-map", "0:v",
-                "-map", "[a]",
-                "-c:v", "copy",
-                "-c:a", export.audio_codec,
-                "-b:a", export.audio_bitrate,
-                "-ar", "44100",
-                "-ac", "2",
-                "-shortest",
-                str(output_path),
-            ]
-        else:
-            args = [
-                "-i", str(video_path),
-                "-i", str(audio_path),
-                "-c:v", "copy",
-                "-c:a", export.audio_codec,
-                "-b:a", export.audio_bitrate,
-                "-ar", "44100",
-                "-ac", "2",
-                "-shortest",
-                str(output_path),
-            ]
+        af = ";".join(parts) + f";{''.join(mix)}amix=inputs={len(mix)}:duration=first:normalize=0"
+    if duration:
+        af += f",apad=whole_dur={duration:.3f}"
+    af += "[a]"
+
+    args = inputs + [
+        "-filter_complex", af,
+        "-map", "0:v",
+        "-map", "[a]",
+        "-c:v", "copy",
+        "-c:a", export.audio_codec,
+        "-b:a", export.audio_bitrate,
+        "-ar", "44100",
+        "-ac", "2",
+        "-shortest",
+        str(output_path),
+    ]
 
     _run_ffmpeg(args, description=f"Add audio ({Path(audio_path).name})")
 
