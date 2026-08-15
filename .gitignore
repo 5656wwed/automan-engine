@@ -29,3 +29,8 @@ env/
 Thumbs.db
 .idea/
 .vscode/
+
+# secrets & media (Colab clone does not need these)
+.env
+bg_music/
+sfx/
