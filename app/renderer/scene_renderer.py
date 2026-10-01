@@ -3,17 +3,50 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 from pathlib import Path
 from typing import Callable, Optional
 
-from app.core.config import ExportSettings, get_config
+from app.core.config import ExportSettings, MotionType, get_config
 from app.core.project import Project, SceneConfig, OverlayItem
-from app.ffmpeg.wrapper import image_to_video, add_audio_to_video, mp4_to_clip
+from app.ffmpeg.wrapper import (image_to_video, add_audio_to_video, mp4_to_clip,
+                                concatenate_videos)
 from app.renderer.motion import get_motion_filter, resolve_scene_motion
 from app.tts.voice_manager import VoiceManager
 from app.utils.audio import get_audio_duration, add_silence_padding
 from app.utils.logger import get_logger
+
+
+# Motion for shot 1, 2, 3 … of a split still beat. Shot 1 keeps the scene's own
+# Ken Burns move; every later shot alternates WIDE (normal framing, 1.0–1.08)
+# with a TIGHT punch-in that starts at 1.30 — the framing jump is what makes the
+# mid-beat change read as a new shot instead of one continuous drift.
+_WIDE_FOR = {
+    MotionType.ZOOM_IN: MotionType.PAN_RIGHT,
+    MotionType.ZOOM_OUT: MotionType.PAN_LEFT,
+    MotionType.ZOOM_IN_LEFT: MotionType.PAN_RIGHT,
+    MotionType.ZOOM_IN_RIGHT: MotionType.PAN_LEFT,
+    MotionType.ZOOM_OUT_LEFT: MotionType.PAN_RIGHT,
+    MotionType.ZOOM_OUT_RIGHT: MotionType.PAN_LEFT,
+    MotionType.PAN_LEFT: MotionType.ZOOM_IN,
+    MotionType.PAN_RIGHT: MotionType.ZOOM_IN,
+    MotionType.CAMERA_DRIFT: MotionType.ZOOM_IN,
+    MotionType.NONE: MotionType.ZOOM_IN,
+}
+
+
+def _alternate_motion(base_motion, index: int) -> MotionType:
+    """Pick the motion for shot `index` of a split still beat."""
+    try:
+        base = base_motion if isinstance(base_motion, MotionType) else MotionType(str(base_motion))
+    except ValueError:
+        base = MotionType.ZOOM_IN
+    if index == 0:
+        return base
+    if index % 2 == 1:
+        return MotionType.CUT_IN          # tight punch-in → visible cut
+    return _WIDE_FOR.get(base, MotionType.ZOOM_IN)   # back out to a wide shot
 
 
 def _scene_cache_key(
@@ -30,13 +63,14 @@ def _scene_cache_key(
     font_path: Optional[str] = None,
     color_filter: Optional[str] = None,
     music_cfg: Optional[str] = None,
+    timing: str = "",
 ) -> str:
     if isinstance(overlay_text, list):
         overlay_str = "||".join(f"{o.text}:{o.trigger}" for o in overlay_text)
     else:
         overlay_str = overlay_text or ""
     parts = [
-        "sub_v3",
+        "sub_v4",
         provider or "",
         voice_id or "",
         script or "",
@@ -50,6 +84,9 @@ def _scene_cache_key(
         font_path or "",
         color_filter or "",
         music_cfg or "",
+        # Pace settings change the length of the clip itself — a cached clip
+        # rendered with a different padding/cut must not be reused.
+        timing or "",
     ]
     # Re-render when the pronunciation dictionary changes.
     from app.tts.pronunciation import pronunciation_version
@@ -617,6 +654,9 @@ class SceneRenderer:
                           + "|" + str(getattr(self.project.config, "music_volume", None) or "")
                           + "|" + str(getattr(self.project.config, "mute_original", False))
                           + "|" + str(getattr(self.project.config, "music_loop", True))),
+            timing=str(getattr(self.project.config, "duration_padding", None))
+                   + "|" + str(getattr(self.project.config, "picture_cut_seconds", None))
+                   + "|" + str(getattr(self.project.config, "transition_duration", None)),
         )
         
         final_clip = self._work_dir / f"{prefix}_{cache_key}.mp4"
@@ -816,17 +856,65 @@ class SceneRenderer:
                 ),
             )
         else:
-            await loop.run_in_executor(
-                None,
-                lambda: image_to_video(
-                    image_path=scene.image,
-                    output_path=raw_video,
-                    duration=scene_duration,
-                    motion_filter=motion_filter,
-                    export=self.export,
-                    overlay_filters=overlay_filters,
-                ),
+            # PACING — a still [IMAGE] beat held for its whole narration line
+            # reads as a freeze-frame. When picture_cut_seconds is set the still
+            # is broken into N shots with alternating motion (the pipeline's
+            # Image A / Image B rule), so the picture changes mid-beat while the
+            # voice keeps running uninterrupted over the whole beat.
+            cut = getattr(self.project.config, "picture_cut_seconds", None)
+            if cut is None:
+                cut = get_config().render.picture_cut_seconds
+            can_split = bool(
+                cut and cut >= 1.0 and scene_duration >= cut * 1.5
+                and not overlay_filters
+                and not getattr(self.project.config, "subtitles_enabled", False)
             )
+            if can_split:
+                shots = max(2, min(4, int(round(scene_duration / cut))))
+                per_shot = scene_duration / shots
+                part_paths = []
+                for k in range(shots):
+                    part_motion = _alternate_motion(motion, k)
+                    pf = get_motion_filter(
+                        motion=part_motion,
+                        width=self.export.width,
+                        height=self.export.height,
+                        duration=per_shot,
+                        fps=self.export.fps,
+                    )
+                    part = self._work_dir / f"{prefix}_{cache_key}_shot{k}.mp4"
+                    await loop.run_in_executor(
+                        None,
+                        lambda p=part, f=pf: image_to_video(
+                            image_path=scene.image,
+                            output_path=p,
+                            duration=per_shot,
+                            motion_filter=f,
+                            export=self.export,
+                        ),
+                    )
+                    part_paths.append(str(part))
+                await loop.run_in_executor(
+                    None,
+                    lambda: concatenate_videos(part_paths, str(raw_video), self.export),
+                )
+                for p in part_paths:
+                    with contextlib.suppress(Exception):
+                        Path(p).unlink()
+                log.info(f"  Picture: {shots} shots × {per_shot:.2f}s "
+                         f"(new shot every {cut:.1f}s)")
+            else:
+                await loop.run_in_executor(
+                    None,
+                    lambda: image_to_video(
+                        image_path=scene.image,
+                        output_path=raw_video,
+                        duration=scene_duration,
+                        motion_filter=motion_filter,
+                        export=self.export,
+                        overlay_filters=overlay_filters,
+                    ),
+                )
 
         _progress("Adding audio", 0.8)
 
@@ -926,6 +1014,9 @@ class SceneRenderer:
                 getattr(self.project.config, "subtitles_enabled", False),
                 getattr(self.project.config, "subtitles_style", "auto") or "auto",
                 font_path=font_path_str,
+                timing=str(getattr(self.project.config, "duration_padding", None))
+                       + "|" + str(getattr(self.project.config, "picture_cut_seconds", None))
+                       + "|" + str(getattr(self.project.config, "transition_duration", None)),
             )
             prefix = f"scene_{i + 1:03d}"
             final_clip = self._work_dir / f"{prefix}_{cache_key}.mp4"

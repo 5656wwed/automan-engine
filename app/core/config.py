@@ -45,6 +45,11 @@ class MotionType(str, Enum):
     TILT_UP = "tilt_up"
     TILT_DOWN = "tilt_down"
     CAMERA_DRIFT = "camera_drift"
+    # Punch-in shots used to re-cut a held still mid-beat: each one STARTS at a
+    # visibly tighter framing than a normal Ken Burns move (1.30 vs 1.0), so the
+    # boundary between shots reads as a hard cut, not a continuous drift.
+    CUT_IN = "cut_in"
+    CUT_OUT = "cut_out"
     NONE = "none"
 
 
@@ -79,7 +84,7 @@ class ExportSettings(BaseModel):
     resolution: str = Field(default="1920x1080", pattern=r"^\d+x\d+$")
     fps: int = Field(default=30, ge=1, le=120)
     quality: QualityPreset = QualityPreset.HIGH
-    codec: str = "libx264"
+    codec: str = os.environ.get("AUTOMAN_CODEC", "auto")
     audio_codec: str = "aac"
     audio_bitrate: str = "192k"
     pixel_format: str = "yuv420p"
@@ -123,7 +128,17 @@ class RenderSettings(BaseModel):
     transition_duration: float = Field(default=0.5, ge=0.1, le=3.0)
     default_motion: MotionType = MotionType.ZOOM_OUT
     randomize_motion: bool = True
-    duration_padding: float = Field(default=0.5, ge=0.0, le=5.0)
+    # Silence kept after each narration line. This is the ONLY dead air in the
+    # final video (the transition overlap cancels out), so a fast-paced
+    # documentary wants it small — 0.12 s keeps the picture cutting on the
+    # voice instead of lingering after it. $AUTOMAN_PADDING overrides.
+    duration_padding: float = Field(
+        default=float(os.environ.get("AUTOMAN_PADDING", "0.12") or 0.12), ge=0.0, le=5.0)
+    # Split a still [IMAGE] beat into several shots (alternating motion) so the
+    # picture changes mid-beat instead of freezing for the whole line.
+    # 0 = off. $AUTOMAN_PICTURE_CUT overrides.
+    picture_cut_seconds: float = Field(
+        default=float(os.environ.get("AUTOMAN_PICTURE_CUT", "0") or 0), ge=0.0, le=30.0)
     cache_audio: bool = True
 
 

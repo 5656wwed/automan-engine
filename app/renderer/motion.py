@@ -94,6 +94,16 @@ def get_motion_filter(
         zoom_expr = f"zoompan=z='1.05':d={total_frames}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*({total_frames}-on)/{total_frames}':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
+    elif motion == MotionType.CUT_IN:
+        # Punch-in: starts already tight (1.30) and keeps pushing to 1.36.
+        zoom_expr = f"zoompan=z='min(1.30+0.06*on/{total_frames},1.36)':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        return f"{base_scale},{zoom_expr}"
+
+    elif motion == MotionType.CUT_OUT:
+        # Pull-back: starts tight (1.30) and eases out towards 1.22.
+        zoom_expr = f"zoompan=z='if(eq(on,1),1.30,max(1.22,zoom-0.06/{total_frames}))':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        return f"{base_scale},{zoom_expr}"
+
     elif motion == MotionType.CAMERA_DRIFT:
         # Very subtle drift with gentle zoom 1.0 → 1.04
         zoom_expr = (

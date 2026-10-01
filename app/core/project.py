@@ -154,6 +154,9 @@ class ProjectConfig(BaseModel):
     motion: Optional[str] = None
     randomize_motion: Optional[bool] = None
     duration_padding: Optional[float] = Field(default=None, ge=0.0, le=5.0)
+    # Break a still beat into shots of roughly this many seconds so the picture
+    # changes mid-beat (0 / None = one held frame for the whole line).
+    picture_cut_seconds: Optional[float] = Field(default=None, ge=0.0, le=30.0)
     quality: Optional[str] = None
     subtitles_enabled: bool = False
     subtitles_style: str = "auto"
