@@ -18,6 +18,10 @@ from app.utils.audio import get_audio_duration, add_silence_padding
 from app.utils.logger import get_logger
 
 
+# Safety ceiling only — the number of pictures per beat is otherwise free
+# (2 = Image A/B, 3, 4, 5 … whichever the script or the interval asks for).
+MAX_SHOTS_PER_BEAT = 12
+
 # Motion for shot 1, 2, 3 … of a split still beat. Shot 1 keeps the scene's own
 # Ken Burns move; every later shot alternates WIDE (normal framing, 1.0–1.08)
 # with a TIGHT punch-in that starts at 1.30 — the framing jump is what makes the
@@ -657,7 +661,8 @@ class SceneRenderer:
             timing=str(getattr(self.project.config, "duration_padding", None))
                    + "|" + str(getattr(self.project.config, "picture_cut_seconds", None))
                    + "|" + str(getattr(self.project.config, "transition_duration", None))
-                   + "|" + str(getattr(self.project.config, "beat_seconds", None)),
+                   + "|" + str(getattr(self.project.config, "beat_seconds", None))
+                   + "|" + str(getattr(self.project.config, "pictures_per_beat", None)),
         )
         
         final_clip = self._work_dir / f"{prefix}_{cache_key}.mp4"
@@ -877,16 +882,34 @@ class SceneRenderer:
             # is broken into N shots with alternating motion (the pipeline's
             # Image A / Image B rule), so the picture changes mid-beat while the
             # voice keeps running uninterrupted over the whole beat.
+            # Two flexible ways to drive the re-cut — either one works:
+            #   pictures_per_beat > 1 : that many shots per beat, evenly divided
+            #                           (2 = Image A/B, 3 = thirds, 5 = fifths …)
+            #   picture_cut_seconds   : a new shot roughly every N seconds, so
+            #                           the count follows the beat's own length
+            # Both are free numbers: no fixed 2 or 4.
             cut = getattr(self.project.config, "picture_cut_seconds", None)
             if cut is None:
                 cut = get_config().render.picture_cut_seconds
-            can_split = bool(
-                cut and cut >= 1.0 and scene_duration >= cut * 1.5
+            per_beat = scene.pictures_per_beat
+            if per_beat is None:
+                per_beat = getattr(self.project.config, "pictures_per_beat", None)
+            if per_beat is None:
+                per_beat = get_config().render.pictures_per_beat
+
+            shots = 1
+            if per_beat and per_beat >= 2:
+                shots = int(per_beat)
+            elif cut and cut >= 0.5:
+                shots = int(round(scene_duration / cut))
+            shots = max(1, min(MAX_SHOTS_PER_BEAT, shots))
+
+            can_split = (
+                shots >= 2
                 and not overlay_filters
                 and not getattr(self.project.config, "subtitles_enabled", False)
             )
             if can_split:
-                shots = max(2, min(4, int(round(scene_duration / cut))))
                 per_shot = scene_duration / shots
                 part_paths = []
                 for k in range(shots):
@@ -917,8 +940,9 @@ class SceneRenderer:
                 for p in part_paths:
                     with contextlib.suppress(Exception):
                         Path(p).unlink()
-                log.info(f"  Picture: {shots} shots × {per_shot:.2f}s "
-                         f"(new shot every {cut:.1f}s)")
+                how = (f"{int(per_beat)} per beat" if per_beat and per_beat >= 2
+                       else f"new shot every {cut:.2f}s")
+                log.info(f"  Picture: {shots} shots × {per_shot:.2f}s ({how})")
             else:
                 await loop.run_in_executor(
                     None,
@@ -1033,7 +1057,8 @@ class SceneRenderer:
                 timing=str(getattr(self.project.config, "duration_padding", None))
                        + "|" + str(getattr(self.project.config, "picture_cut_seconds", None))
                        + "|" + str(getattr(self.project.config, "transition_duration", None))
-                       + "|" + str(getattr(self.project.config, "beat_seconds", None)),
+                       + "|" + str(getattr(self.project.config, "beat_seconds", None))
+                       + "|" + str(getattr(self.project.config, "pictures_per_beat", None)),
             )
             prefix = f"scene_{i + 1:03d}"
             final_clip = self._work_dir / f"{prefix}_{cache_key}.mp4"

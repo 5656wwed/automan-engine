@@ -54,6 +54,8 @@ class SceneConfig(BaseModel):
     transition: Optional[str] = None
     motion: Optional[str] = None
     duration_padding: Optional[float] = Field(default=None, ge=0.0, le=10.0)
+    # How many pictures this beat shows (>=2). None = use the project setting.
+    pictures_per_beat: Optional[int] = Field(default=None, ge=0, le=12)
     # Fixed beat length in seconds (the pipeline's unit is an 8s beat). None/0 =
     # the picture follows the voice instead.
     beat_seconds: Optional[float] = Field(default=None, ge=0.0, le=60.0)
@@ -163,6 +165,8 @@ class ProjectConfig(BaseModel):
     # Fixed beat length in seconds — 8.0 for the standard pipeline beat
     # (60 beats = 8:00). 0 / None = each picture follows its own voice.
     beat_seconds: Optional[float] = Field(default=None, ge=0.0, le=60.0)
+    # Pictures per beat (>=2) — free: 2, 3, 4 … 0 / None = use the interval.
+    pictures_per_beat: Optional[int] = Field(default=None, ge=0, le=12)
     quality: Optional[str] = None
     subtitles_enabled: bool = False
     subtitles_style: str = "auto"

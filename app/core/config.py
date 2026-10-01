@@ -143,6 +143,10 @@ class RenderSettings(BaseModel):
     # 0 = off, the picture follows the voice instead. $AUTOMAN_BEAT_SECONDS.
     beat_seconds: float = Field(
         default=float(os.environ.get("AUTOMAN_BEAT_SECONDS", "0") or 0), ge=0.0, le=60.0)
+    # Free-form re-cut of a still beat: either a number of pictures per beat
+    # (>=2), or a new picture every N seconds. Both 0 = one held picture.
+    pictures_per_beat: int = Field(
+        default=int(os.environ.get("AUTOMAN_PICTURES_PER_BEAT", "0") or 0), ge=0, le=12)
     cache_audio: bool = True
 
 
