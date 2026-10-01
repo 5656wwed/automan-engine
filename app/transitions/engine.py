@@ -188,8 +188,7 @@ def _xfade_merge(
         *inputs,
         "-filter_complex", filter_complex,
         "-map", "[vout]", "-map", "[aout]",
-        "-c:v", export.codec, "-crf", str(export.crf),
-        "-preset", export.preset_speed,
+        *_video_flags(export),
         "-c:a", export.audio_codec, "-b:a", export.audio_bitrate,
         "-ar", "44100",
         "-ac", "2",
@@ -284,3 +283,76 @@ def _fallback_concat(
     from app.ffmpeg.wrapper import concatenate_videos
     concatenate_videos([str(p) for p in clip_paths], str(output_path), export)
     return output_path
+
+_AUTO_CODEC_CACHE: list[str | None] = [None]
+
+def _resolve_codec(export):
+    """Return the video codec to use.
+
+    Explicit AUTOMAN_CODEC (or project) value wins. When codec is "auto",
+    probe the ffmpeg binary ONCE with real 1-frame encodes and pick the best
+    hardware encoder that actually works: h264_nvenc (NVIDIA) >
+    h264_qsv (Intel QSV) > h264_amf (AMD) > libx264 (CPU). Checking the
+    encoder list is NOT enough - full ffmpeg builds list nvenc/qsv even when
+    no such GPU exists, so each candidate is verified with a real encode."""
+    codec = (export.codec or "libx264").lower()
+    if codec != "auto":
+        return codec
+    if _AUTO_CODEC_CACHE[0] is not None:
+        return _AUTO_CODEC_CACHE[0]
+    import shutil as _sh, subprocess as _sp, tempfile as _tf
+    ff = getattr(export, "ffmpeg_path", None) or _sh.which("ffmpeg") or "ffmpeg"
+    base = ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+            "testsrc=size=320x180:rate=15", "-frames:v", "1", "-y"]
+    candidates = [("h264_nvenc", ["-rc", "vbr", "-cq", "28", "-preset", "p4"]),
+                  ("h264_qsv", ["-global_quality", "28", "-preset", "medium", "-look_ahead", "0"]),
+                  ("h264_amf", ["-rc", "cqp", "-qp_i", "28", "-qp_p", "28", "-quality", "balanced"])]
+    for cand, extra in candidates:
+        tmp = _tf.NamedTemporaryFile(suffix=".mp4", delete=False)
+        tmp.close()
+        try:
+            r = _sp.run([ff] + base + ["-c:v", cand] + extra + [tmp.name],
+                        capture_output=True, text=True, timeout=20)
+            if r.returncode == 0:
+                _AUTO_CODEC_CACHE[0] = cand
+                print(f"[automan] codec auto-detect -> {cand}")
+                return cand
+        except Exception:
+            pass
+        finally:
+            try:
+                import os as _os
+                _os.unlink(tmp.name)
+            except Exception:
+                pass
+    _AUTO_CODEC_CACHE[0] = "libx264"
+    print("[automan] codec auto-detect -> libx264 (no working hardware encoder)")
+    return _AUTO_CODEC_CACHE[0]
+
+
+def _video_flags(export):
+    """Return codec flags for export. Uses NVENC flags when codec is an nvenc
+    codec (h264_nvenc / hevc_nvenc), QSV flags for Intel Quick Sync
+    (h264_qsv / hevc_qsv), AMF flags for AMD (h264_amf), otherwise the
+    original x264 flags. Honors codec="auto" via _resolve_codec."""
+    codec = _resolve_codec(export)
+    if "nvenc" in codec:
+        q = getattr(export, "quality", None)
+        qv = getattr(q, "value", None) if q is not None else None
+        nv_preset = {"low": "p1", "medium": "p3", "high": "p4", "ultra": "p6"}.get(qv, "p4")
+        return ["-c:v", codec, "-rc", "vbr", "-cq", str(export.crf),
+                "-b:v", "0", "-preset", nv_preset]
+    if "qsv" in codec:
+        q = getattr(export, "quality", None)
+        qv = getattr(q, "value", None) if q is not None else None
+        qsv_preset = {"low": "veryfast", "medium": "medium", "high": "slow", "ultra": "veryslow"}.get(qv, "medium")
+        return ["-c:v", codec, "-global_quality", str(export.crf),
+                "-preset", qsv_preset, "-look_ahead", "0"]
+    if "amf" in codec:
+        q = getattr(export, "quality", None)
+        qv = getattr(q, "value", None) if q is not None else None
+        amf_preset = {"low": "speed", "medium": "balanced", "high": "quality", "ultra": "quality"}.get(qv, "balanced")
+        return ["-c:v", codec, "-rc", "cqp", "-qp_i", str(export.crf),
+                "-qp_p", str(export.crf), "-quality", amf_preset]
+    return ["-c:v", codec, "-crf", str(export.crf), "-preset", export.preset_speed]
+
