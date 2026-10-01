@@ -139,6 +139,10 @@ class RenderSettings(BaseModel):
     # 0 = off. $AUTOMAN_PICTURE_CUT overrides.
     picture_cut_seconds: float = Field(
         default=float(os.environ.get("AUTOMAN_PICTURE_CUT", "0") or 0), ge=0.0, le=30.0)
+    # Fixed beat length (the pipeline's unit is an 8s beat: 60 beats = 8:00).
+    # 0 = off, the picture follows the voice instead. $AUTOMAN_BEAT_SECONDS.
+    beat_seconds: float = Field(
+        default=float(os.environ.get("AUTOMAN_BEAT_SECONDS", "0") or 0), ge=0.0, le=60.0)
     cache_audio: bool = True
 
 

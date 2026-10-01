@@ -656,7 +656,8 @@ class SceneRenderer:
                           + "|" + str(getattr(self.project.config, "music_loop", True))),
             timing=str(getattr(self.project.config, "duration_padding", None))
                    + "|" + str(getattr(self.project.config, "picture_cut_seconds", None))
-                   + "|" + str(getattr(self.project.config, "transition_duration", None)),
+                   + "|" + str(getattr(self.project.config, "transition_duration", None))
+                   + "|" + str(getattr(self.project.config, "beat_seconds", None)),
         )
         
         final_clip = self._work_dir / f"{prefix}_{cache_key}.mp4"
@@ -730,6 +731,21 @@ class SceneRenderer:
             t_dur = 0.5
 
         target_duration = tts_result_duration + padding + t_dur
+
+        # BEAT LENGTH — the pipeline's unit is an 8-second beat (60 beats = 8:00).
+        # When beat_seconds is set, every beat's picture is exactly that long:
+        # a short narration line holds its shot for the rest of the beat, and a
+        # line longer than the beat is never cut (the voice always wins).
+        beat_target = scene.beat_seconds
+        if beat_target is None:
+            beat_target = getattr(self.project.config, "beat_seconds", None)
+        if beat_target is None:
+            beat_target = get_config().render.beat_seconds
+        if beat_target and beat_target > 0:
+            if target_duration < beat_target + t_dur:
+                target_duration = beat_target + t_dur
+            log.info(f"  Beat length: {beat_target:.2f}s "
+                     f"(voice {tts_result_duration:.2f}s)")
 
         if overlay_text:
             cfg = get_config()
@@ -1016,7 +1032,8 @@ class SceneRenderer:
                 font_path=font_path_str,
                 timing=str(getattr(self.project.config, "duration_padding", None))
                        + "|" + str(getattr(self.project.config, "picture_cut_seconds", None))
-                       + "|" + str(getattr(self.project.config, "transition_duration", None)),
+                       + "|" + str(getattr(self.project.config, "transition_duration", None))
+                       + "|" + str(getattr(self.project.config, "beat_seconds", None)),
             )
             prefix = f"scene_{i + 1:03d}"
             final_clip = self._work_dir / f"{prefix}_{cache_key}.mp4"
