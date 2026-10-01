@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -19,6 +20,32 @@ log = get_logger("ffmpeg.wrapper")
 # ---------------------------------------------------------------------------
 # Duration helpers
 import sys
+
+def _letterbox_video() -> bool:
+    """True = pad an off-ratio video clip with black bars instead of filling the
+    frame. Default is False (fill/crop), matching what stills do."""
+    return os.environ.get("AUTOMAN_LETTERBOX_VIDEO", "0").strip().lower() in ("1", "true", "yes")
+
+
+def has_audio_stream(filepath: str | Path) -> bool:
+    """True when the media file carries an audio track.
+
+    A silent source clip (common with AI-generated b-roll) must not be used as a
+    background-audio input: the amix filtergraph would ask for `[N:a]` on a
+    stream that does not exist and the whole scene render fails.
+    """
+    try:
+        from app.ffmpeg.detector import get_ffprobe_path
+        ffprobe = get_ffprobe_path()
+        proc = subprocess.run(
+            [str(ffprobe), "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(filepath)],
+            capture_output=True, text=True,
+        )
+        return bool((proc.stdout or "").strip())
+    except Exception:
+        return False
+
 
 def get_media_duration(filepath: str | Path) -> float:
     """Get duration of a media file in seconds using ffprobe."""
@@ -136,10 +163,21 @@ def mp4_to_clip(
 
     src_duration = get_media_duration(video_path)
 
-    filters = [
-        f"scale={width}:{height}:force_original_aspect_ratio=decrease",
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
-    ]
+    # Match the still-image path: FILL the frame (scale to cover + centre crop)
+    # so a clip whose aspect ratio isn't exactly the export ratio never shows
+    # black bars — bars are the quickest way for a video clip to look different
+    # from the stills around it. $AUTOMAN_LETTERBOX_VIDEO=1 restores the old
+    # pad-with-black behaviour.
+    if _letterbox_video():
+        filters = [
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease",
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
+        ]
+    else:
+        filters = [
+            f"scale={width}:{height}:force_original_aspect_ratio=increase",
+            f"crop={width}:{height}",
+        ]
 
     # If the clip is shorter than the narration, LOOP it (continuous
     # cycle) instead of stretching it. Stretching produces ugly slow-motion;
@@ -173,9 +211,7 @@ def mp4_to_clip(
             "-vf", filter_str,
             "-t", str(duration),
             "-an",
-            "-c:v", export.codec,
-            "-crf", str(export.crf),
-            "-preset", export.preset_speed,
+            *_video_flags(export),
             "-pix_fmt", export.pixel_format,
             "-r", str(fps),
             str(output_path),
@@ -233,9 +269,7 @@ def image_to_video(
         "-i", str(image_path),
         "-vf", filter_str,
         "-t", str(duration),
-        "-c:v", export.codec,
-        "-crf", str(export.crf),
-        "-preset", export.preset_speed,
+        *_video_flags(export),
         "-pix_fmt", export.pixel_format,
         "-r", str(fps),
         str(output_path),
@@ -383,9 +417,7 @@ def concatenate_videos(
                 "-f", "concat",
                 "-safe", "0",
                 "-i", str(concat_file),
-                "-c:v", export.codec,
-                "-crf", str(export.crf),
-                "-preset", export.preset_speed,
+                *_video_flags(export),
                 "-c:a", export.audio_codec,
                 "-b:a", export.audio_bitrate,
                 "-pix_fmt", export.pixel_format,
@@ -429,9 +461,7 @@ def apply_transition_between(
             f"[0:a][1:a]acrossfade=d={transition_duration}[a]",
             "-map", "[v]",
             "-map", "[a]",
-            "-c:v", export.codec,
-            "-crf", str(export.crf),
-            "-preset", export.preset_speed,
+            *_video_flags(export),
             "-c:a", export.audio_codec,
             "-pix_fmt", export.pixel_format,
             str(output_path),
@@ -445,9 +475,7 @@ def apply_transition_between(
             f"[0:a][1:a]acrossfade=d={transition_duration}[a]",
             "-map", "[v]",
             "-map", "[a]",
-            "-c:v", export.codec,
-            "-crf", str(export.crf),
-            "-preset", export.preset_speed,
+            *_video_flags(export),
             "-c:a", export.audio_codec,
             "-pix_fmt", export.pixel_format,
             str(output_path),
@@ -509,3 +537,76 @@ def scale_image(
         str(output_path),
     ]
     _run_ffmpeg(args, description=f"Scale image ({Path(image_path).name})")
+
+_AUTO_CODEC_CACHE: list[str | None] = [None]
+
+def _resolve_codec(export):
+    """Return the video codec to use.
+
+    Explicit AUTOMAN_CODEC (or project) value wins. When codec is "auto",
+    probe the ffmpeg binary ONCE with real 1-frame encodes and pick the best
+    hardware encoder that actually works: h264_nvenc (NVIDIA) >
+    h264_qsv (Intel QSV) > h264_amf (AMD) > libx264 (CPU). Checking the
+    encoder list is NOT enough - full ffmpeg builds list nvenc/qsv even when
+    no such GPU exists, so each candidate is verified with a real encode."""
+    codec = (export.codec or "libx264").lower()
+    if codec != "auto":
+        return codec
+    if _AUTO_CODEC_CACHE[0] is not None:
+        return _AUTO_CODEC_CACHE[0]
+    import shutil as _sh, subprocess as _sp, tempfile as _tf
+    ff = getattr(export, "ffmpeg_path", None) or _sh.which("ffmpeg") or "ffmpeg"
+    base = ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+            "testsrc=size=320x180:rate=15", "-frames:v", "1", "-y"]
+    candidates = [("h264_nvenc", ["-rc", "vbr", "-cq", "28", "-preset", "p4"]),
+                  ("h264_qsv", ["-global_quality", "28", "-preset", "medium", "-look_ahead", "0"]),
+                  ("h264_amf", ["-rc", "cqp", "-qp_i", "28", "-qp_p", "28", "-quality", "balanced"])]
+    for cand, extra in candidates:
+        tmp = _tf.NamedTemporaryFile(suffix=".mp4", delete=False)
+        tmp.close()
+        try:
+            r = _sp.run([ff] + base + ["-c:v", cand] + extra + [tmp.name],
+                        capture_output=True, text=True, timeout=20)
+            if r.returncode == 0:
+                _AUTO_CODEC_CACHE[0] = cand
+                print(f"[automan] codec auto-detect -> {cand}")
+                return cand
+        except Exception:
+            pass
+        finally:
+            try:
+                import os as _os
+                _os.unlink(tmp.name)
+            except Exception:
+                pass
+    _AUTO_CODEC_CACHE[0] = "libx264"
+    print("[automan] codec auto-detect -> libx264 (no working hardware encoder)")
+    return _AUTO_CODEC_CACHE[0]
+
+
+def _video_flags(export):
+    """Return codec flags for export. Uses NVENC flags when codec is an nvenc
+    codec (h264_nvenc / hevc_nvenc), QSV flags for Intel Quick Sync
+    (h264_qsv / hevc_qsv), AMF flags for AMD (h264_amf), otherwise the
+    original x264 flags. Honors codec="auto" via _resolve_codec."""
+    codec = _resolve_codec(export)
+    if "nvenc" in codec:
+        q = getattr(export, "quality", None)
+        qv = getattr(q, "value", None) if q is not None else None
+        nv_preset = {"low": "p1", "medium": "p3", "high": "p4", "ultra": "p6"}.get(qv, "p4")
+        return ["-c:v", codec, "-rc", "vbr", "-cq", str(export.crf),
+                "-b:v", "0", "-preset", nv_preset]
+    if "qsv" in codec:
+        q = getattr(export, "quality", None)
+        qv = getattr(q, "value", None) if q is not None else None
+        qsv_preset = {"low": "veryfast", "medium": "medium", "high": "slow", "ultra": "veryslow"}.get(qv, "medium")
+        return ["-c:v", codec, "-global_quality", str(export.crf),
+                "-preset", qsv_preset, "-look_ahead", "0"]
+    if "amf" in codec:
+        q = getattr(export, "quality", None)
+        qv = getattr(q, "value", None) if q is not None else None
+        amf_preset = {"low": "speed", "medium": "balanced", "high": "quality", "ultra": "quality"}.get(qv, "balanced")
+        return ["-c:v", codec, "-rc", "cqp", "-qp_i", str(export.crf),
+                "-qp_p", str(export.crf), "-quality", amf_preset]
+    return ["-c:v", codec, "-crf", str(export.crf), "-preset", export.preset_speed]
+

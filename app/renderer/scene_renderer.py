@@ -11,7 +11,7 @@ from typing import Callable, Optional
 from app.core.config import ExportSettings, MotionType, get_config
 from app.core.project import Project, SceneConfig, OverlayItem
 from app.ffmpeg.wrapper import (image_to_video, add_audio_to_video, mp4_to_clip,
-                                concatenate_videos)
+                                concatenate_videos, has_audio_stream)
 from app.renderer.motion import get_motion_filter, resolve_scene_motion
 from app.tts.voice_manager import VoiceManager
 from app.utils.audio import get_audio_duration, add_silence_padding
@@ -962,7 +962,10 @@ class SceneRenderer:
         _sfx      = sfx_path
         _delay    = sfx_delay_ms
         _vol      = get_config().overlay_sfx_volume if overlay_text else 0.55
-        _bg_audio = Path(scene.image) if is_mp4 else None
+        _bg_audio = (Path(scene.image)
+                     if (is_mp4 and has_audio_stream(scene.image)) else None)
+        if is_mp4 and _bg_audio is None:
+            log.info("  Source clip has no audio track — skipping background-audio mix.")
         _bg_vol   = get_config().mp4_bg_volume
         _voice_vol = voice_volume
         # background music + mute original
