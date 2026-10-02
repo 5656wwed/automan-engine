@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -50,6 +51,10 @@ class SceneConfig(BaseModel):
     """Single scene configuration."""
     title: Optional[str] = None
     image: str
+    # Every picture of this beat, in order. One beat can be a run of lettered
+    # images (beat-3-image-a/b/c) that together fill the beat's time; `image`
+    # stays the first picture for compatibility. None/1 entry = one picture.
+    images: Optional[list[str]] = None
     script: str
     overlay_text: Optional[Union[str, list[OverlayItem]]] = None
     transition: Optional[str] = None
@@ -217,6 +222,34 @@ def _numeric_stem(p: Path) -> int:
     return int(m.group()) if m else 0
 
 
+# ---------------------------------------------------------------------------
+# Beat naming (beat-1-video-…, beat-3-image-a-…, beat-3-image-b-…)
+#
+# A beat is one 8-second unit of the film. Media sharing a beat number belong
+# to the SAME beat: beat-3-image-a/b/c is one beat shown as three pictures, not
+# three beats. A letterless "video" file is a beat on its own.
+# ---------------------------------------------------------------------------
+_BEAT_TOKEN_RE = re.compile(r"beat[\s._\-]*#?\s*(\d+)", re.IGNORECASE)
+_BEAT_LETTER_RE = re.compile(
+    r"(?:image|img|pic|picture|still|shot)[\s._\-]*([a-z])(?![a-z])", re.IGNORECASE)
+
+
+def beat_number(p: str | Path) -> int | None:
+    """Beat number encoded in a media filename, or None if it carries none.
+
+    'beat-3-image-b-001.png' -> 3, 'beat-12-video-2.mp4' -> 12. Anything after
+    the beat/letter part (counters, hashes) is ignored.
+    """
+    m = _BEAT_TOKEN_RE.search(Path(p).stem)
+    return int(m.group(1)) if m else None
+
+
+def beat_letter(p: str | Path) -> str:
+    """Picture letter inside a beat ('beat-3-image-b-…' -> 'b'), else ''."""
+    m = _BEAT_LETTER_RE.search(Path(p).stem)
+    return m.group(1).lower() if m else ""
+
+
 class Project:
     """Loaded project with resolved paths and validation."""
 
@@ -260,16 +293,42 @@ class Project:
                     + [f for f in media if not is_clip_path(f)])
         return media
 
-    def _build_scene_list(self) -> None:
-        """Rebuild config.scenes from discovered media files.
+    def _group_beats(self, media: list[Path]) -> list[list[Path]]:
+        """Group discovered media into beats (one beat = one 8-second unit).
 
-        Each media file becomes one scene. JSON scene configs supply the
-        script, voice, overlay, etc. positionally — scene config [i] is
-        paired with media file [i]. If there are more media files than
-        JSON scenes, the extra media files inherit the last scene's voice
-        config and get an empty script (validation will flag those).
-        If there are more JSON scenes than media files, the extra scenes
-        are silently dropped.
+        Files carrying the same `beat-N` token are ONE beat:
+        `beat-3-image-a`, `beat-3-image-b`, `beat-3-image-c` render as a single
+        beat whose picture time is shared between the three images — not as
+        three beats. A clip inside a beat comes first, then the images by
+        letter (a → b → c → d). Files with no beat token each stay their own
+        beat, so plain 01.jpg / 02.mp4 projects behave exactly as before.
+        """
+        groups: dict[tuple, list[Path]] = {}
+        for i, p in enumerate(media):
+            n = beat_number(p)
+            key = ("beat", n) if n is not None else ("file", i)
+            groups.setdefault(key, []).append(p)
+
+        beats: list[list[Path]] = []
+        for (kind, _), paths in groups.items():
+            if kind == "beat" and len(paths) > 1:
+                paths = sorted(paths, key=lambda p: (0 if is_clip_path(p) else 1,
+                                                     beat_letter(p),
+                                                     p.name.lower()))
+            beats.append(paths)
+        return beats
+
+    def _build_scene_list(self) -> None:
+        """Rebuild config.scenes from the media files on disk.
+
+        One BEAT becomes one scene. A beat is either a single file or a run of
+        lettered images sharing a beat number (beat-3-image-a/b/c) — those
+        pictures are attached to the scene as `images` and share its duration.
+        JSON scene configs supply the script, voice, overlay, etc. positionally
+        — scene config [i] is paired with beat [i]. If there are more beats
+        than JSON scenes, the extra beats inherit the last scene's voice
+        config and get an empty script (validation will flag those). If there
+        are more JSON scenes than beats, the extra scenes are silently dropped.
         """
         all_media = self._discover_media()
 
@@ -278,18 +337,28 @@ class Project:
             self._resolve_image_paths_legacy()
             return
 
+        beats = self._group_beats(all_media)
+        multi = sum(1 for b in beats if len(b) > 1)
+        if multi:
+            from app.utils.logger import get_logger
+            get_logger("project").info(
+                f"  Beats: {len(beats)} from {len(all_media)} files "
+                f"({multi} beat(s) covered by several pictures)")
+
         json_scenes = self.config.scenes
         new_scenes: list[SceneConfig] = []
 
-        for i, media_path in enumerate(all_media):
+        for i, group in enumerate(beats):
+            pics = [str(p) for p in group]
             if i < len(json_scenes):
                 base = json_scenes[i]
-                scene = base.model_copy(update={"image": str(media_path)})
+                scene = base.model_copy(update={"image": pics[0], "images": pics})
             else:
-                # More media than scripts — create a minimal scene
+                # More beats than scripts — create a minimal scene
                 template = json_scenes[-1] if json_scenes else None
                 scene = SceneConfig(
-                    image=str(media_path),
+                    image=pics[0],
+                    images=pics,
                     script="",
                     voice=template.voice if template else None,
                 )

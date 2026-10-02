@@ -648,7 +648,8 @@ class SceneRenderer:
 
         cache_key = _scene_cache_key(
             provider, voice_id, scene.script, tts_kwargs,
-            scene.image, motion.value, self.export.resolution,
+            "|".join(getattr(scene, "images", None) or [scene.image]),
+            motion.value, self.export.resolution,
             overlay_text,
             getattr(self.project.config, "subtitles_enabled", False),
             getattr(self.project.config, "subtitles_style", "auto") or "auto",
@@ -865,7 +866,70 @@ class SceneRenderer:
             log.info(f"  Color grade: {color_chain}")
 
         loop = asyncio.get_event_loop()
-        if is_mp4:
+
+        # ── Beat pictures: one beat covered by several lettered images ──────
+        # beat-3-image-a/b/c are three pictures of ONE beat: the beat's whole
+        # picture time is divided between them, so A opens the beat and the
+        # last letter closes it while the narration runs uninterrupted.
+        beat_pics = [str(p) for p in (getattr(scene, "images", None) or []) if p]
+        if len(beat_pics) < 2:
+            beat_pics = []
+
+        if beat_pics and overlay_filters:
+            # drawtext/subtitle times are absolute to the whole beat, so they
+            # cannot be split across pictures — same rule as the mid-beat
+            # re-cut below: hold the first picture and say so in the log.
+            log.info("  Beat has %d pictures but overlays/subtitles are on — "
+                     "holding the first picture for the whole beat." % len(beat_pics))
+            beat_pics = []
+
+        if beat_pics:
+            per_pic = scene_duration / len(beat_pics)
+            part_paths = []
+            for k, src in enumerate(beat_pics):
+                part_motion = _alternate_motion(motion, k)
+                pf = get_motion_filter(
+                    motion=part_motion,
+                    width=self.export.width,
+                    height=self.export.height,
+                    duration=per_pic,
+                    fps=self.export.fps,
+                )
+                part = self._work_dir / f"{prefix}_{cache_key}_pic{k}.mp4"
+                if is_clip_path(src):
+                    await loop.run_in_executor(
+                        None,
+                        lambda p=part, s=src: mp4_to_clip(
+                            video_path=s,
+                            output_path=p,
+                            duration=per_pic,
+                            export=self.export,
+                        ),
+                    )
+                else:
+                    await loop.run_in_executor(
+                        None,
+                        lambda p=part, s=src, f=pf: image_to_video(
+                            image_path=s,
+                            output_path=p,
+                            duration=per_pic,
+                            motion_filter=f,
+                            export=self.export,
+                        ),
+                    )
+                part_paths.append(str(part))
+                log.info(f"  Picture {k + 1}/{len(beat_pics)}: "
+                         f"{Path(src).name} — {per_pic:.2f}s")
+            await loop.run_in_executor(
+                None,
+                lambda: concatenate_videos(part_paths, str(raw_video), self.export),
+            )
+            for p in part_paths:
+                with contextlib.suppress(Exception):
+                    Path(p).unlink()
+            log.info(f"  Beat pictures: {len(beat_pics)} × {per_pic:.2f}s "
+                     f"= {scene_duration:.2f}s")
+        elif is_mp4:
             await loop.run_in_executor(
                 None,
                 lambda: mp4_to_clip(
@@ -1052,7 +1116,8 @@ class SceneRenderer:
 
             cache_key = _scene_cache_key(
                 provider, voice_id, scene.script, tts_kwargs,
-                scene.image, motion.value, self.export.resolution,
+                "|".join(getattr(scene, "images", None) or [scene.image]),
+                motion.value, self.export.resolution,
                 scene.overlay_text,
                 getattr(self.project.config, "subtitles_enabled", False),
                 getattr(self.project.config, "subtitles_style", "auto") or "auto",
