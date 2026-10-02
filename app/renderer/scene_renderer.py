@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from app.core.config import ExportSettings, MotionType, get_config
-from app.core.project import Project, SceneConfig, OverlayItem
+from app.core.project import Project, SceneConfig, OverlayItem, is_clip_path
 from app.ffmpeg.wrapper import (image_to_video, add_audio_to_video, mp4_to_clip,
                                 concatenate_videos, has_audio_stream)
 from app.renderer.motion import get_motion_filter, resolve_scene_motion
@@ -782,7 +782,7 @@ class SceneRenderer:
         _progress("Rendering video", 0.5)
         raw_video = self._work_dir / f"{prefix}_raw.mp4"
 
-        is_mp4 = Path(scene.image).suffix.lower() == ".mp4"
+        is_mp4 = is_clip_path(scene.image)
 
         motion_filter = get_motion_filter(
             motion=motion,

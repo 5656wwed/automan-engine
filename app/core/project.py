@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -194,6 +195,21 @@ class ProjectConfig(BaseModel):
 # ---------------------------------------------------------------------------
 # Project Loader
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Media kinds + discovery order
+# ---------------------------------------------------------------------------
+# Keep these in sync with the dashboard's ALLOWED_MEDIA (web app/main.py): a
+# file the dashboard accepts must also be discovered here, or the upload is
+# silently dropped and the beat ends up with no picture.
+CLIP_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def is_clip_path(p: str | Path) -> bool:
+    """True when a media file is a video clip (rather than a still image)."""
+    return Path(p).suffix.lower() in CLIP_EXTS
+
+
 def _numeric_stem(p: Path) -> int:
     """Sort key: extract the first integer from a filename stem."""
     import re as _re
@@ -217,26 +233,32 @@ class Project:
     def _discover_media(self) -> list[Path]:
         """Return all media files in the images/ folder (or project root).
 
-        Order: MP4 files sorted by numeric stem FIRST, then image files
-        sorted by numeric stem. This gives the caller full control over
-        scene count — adding 001.mp4–010.mp4 alongside 001.png–072.png
-        produces 82 media entries, not 72.
+        Order: STRICTLY by the integer in the filename stem, clips and stills
+        interleaved — 01.jpg, 02.mp4, 03.jpg is discovered (and rendered) in
+        exactly that order. The numbering alone therefore decides which beat
+        gets a clip and which gets a still; clips are no longer hoisted to the
+        front. Files with no digits sort as 0 (first) and ties break on the
+        lowercase name, so the order is never random.
+        `$AUTOMAN_MEDIA_ORDER=videos_first` restores the legacy order (every
+        clip first, then every still).
         """
-        _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+        _MEDIA_EXTS = CLIP_EXTS | IMAGE_EXTS
 
         search_root = self.project_dir / "images"
         if not search_root.exists():
             search_root = self.project_dir
 
-        mp4s = sorted(
-            [f for f in search_root.iterdir() if f.is_file() and f.suffix.lower() == ".mp4"],
-            key=_numeric_stem,
+        media = sorted(
+            [f for f in search_root.iterdir()
+             if f.is_file() and f.suffix.lower() in _MEDIA_EXTS],
+            key=lambda p: (_numeric_stem(p), p.name.lower()),
         )
-        images = sorted(
-            [f for f in search_root.iterdir() if f.is_file() and f.suffix.lower() in _IMAGE_EXTS],
-            key=_numeric_stem,
-        )
-        return mp4s + images
+
+        legacy = (os.environ.get("AUTOMAN_MEDIA_ORDER", "") or "").strip().lower()
+        if legacy == "videos_first":
+            return ([f for f in media if is_clip_path(f)]
+                    + [f for f in media if not is_clip_path(f)])
+        return media
 
     def _build_scene_list(self) -> None:
         """Rebuild config.scenes from discovered media files.
@@ -388,7 +410,7 @@ class Project:
                 try:
                     if img_path.stat().st_size == 0:
                         errors.append(f"Scene {i + 1}: Image file '{img_path.name}' is empty (0 bytes).")
-                    elif img_path.suffix.lower() != ".mp4":
+                    elif not is_clip_path(img_path):
                         from PIL import Image
                         with Image.open(img_path) as img:
                             img.verify()

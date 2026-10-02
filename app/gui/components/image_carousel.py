@@ -11,13 +11,14 @@ from typing import Callable, Optional
 import customtkinter as ctk
 from PIL import Image, ImageTk
 
+from app.core.project import is_clip_path
 from app.gui.theme import COLORS, FONTS, SPACING
 
 
 def _thumbnail_for(path: Path, size: tuple[int, int]) -> "ctk.CTkImage | None":
-    """Return a CTkImage thumbnail for an image or MP4 file."""
+    """Return a CTkImage thumbnail for an image or video clip."""
     try:
-        if path.suffix.lower() == ".mp4":
+        if is_clip_path(path):
             return _mp4_thumbnail(path, size)
         img = Image.open(path)
         img.thumbnail(size, Image.LANCZOS)
@@ -83,7 +84,7 @@ class ImageCarousel(ctk.CTkScrollableFrame):
 
         for i, path in enumerate(image_paths):
             path = Path(path)
-            is_video = path.suffix.lower() == ".mp4"
+            is_video = is_clip_path(path)
             photo = _thumbnail_for(path, self._thumb_size)
 
             frame = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=8)
