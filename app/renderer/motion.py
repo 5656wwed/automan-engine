@@ -18,12 +18,18 @@ def get_motion_filter(
     height: int = 1080,
     duration: float = 5.0,
     fps: int = 30,
+    zoom: float = 0.08,
 ) -> str:
     """Build an FFmpeg zoompan filter string for the given motion type.
 
     The zoompan filter works at a default internal fps of 25.  We compute
     the total number of frames ('d') based on duration * fps, then set the
     zoom / pan expressions accordingly.
+
+    `zoom` is the Ken Burns strength — how far the move travels across the
+    frame (0.08 = gentle, 0.25 = strong). It comes from the project's
+    `motion_zoom` (the dashboard's "Image motion" control) so the strength is
+    chosen per project instead of being baked into the engine.
 
     Returns:
         A complete FFmpeg -vf filter string (may include scale + zoompan + crop).
@@ -36,6 +42,25 @@ def get_motion_filter(
 
     total_frames = int(duration * fps)
 
+    # One slider drives every move coherently:
+    z     = max(0.0, float(zoom or 0.0))   # travel of a zoom
+    panz  = z * 0.6                        # a pan needs headroom either side
+    driftz = z * 0.5                       # drift is subtler than a pan
+    cut0  = 1.0 + z * 1.8                  # punch-in starts already tight
+    cutpush = z * 0.3                      # and keeps pushing a little
+    cut1  = cut0 + cutpush                 # where the punch-in lands
+    cutback = 1.0 + z * 1.4                # where a pull-back eases out to
+
+    z4      = f"{z:.4f}"
+    zmax4   = f"{1.0 + z:.4f}"
+    pan4    = f"{1.0 + panz:.4f}"
+    drift4  = f"{1.0 + driftz:.4f}"
+    cut0s   = f"{cut0:.4f}"
+    cut1s   = f"{cut1:.4f}"
+    cutpushs = f"{cutpush:.4f}"
+    cutbacks = f"{cutback:.4f}"
+    drift_amp = f"{min(0.012 * (driftz / 0.02 if driftz else 0.0), 0.035):.4f}"
+
     # All filters start by upscaling the image so zoompan has room to work,
     # then crop back to the target resolution.
     # We use 2x the target size as the zoompan canvas.
@@ -45,72 +70,72 @@ def get_motion_filter(
     base_scale = f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase,crop={canvas_w}:{canvas_h}"
 
     if motion == MotionType.ZOOM_IN:
-        # Zoom from 1.0 → 1.08 centered (8% zoom, fills full duration)
-        zoom_expr = f"zoompan=z='min(1.0+0.08*on/{total_frames},1.08)':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        # Zoom in 1.0 → 1+z centered (z = the project's motion strength)
+        zoom_expr = f"zoompan=z='min(1.0+{z4}*on/{total_frames},{zmax4})':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.ZOOM_OUT:
-        # Zoom from 1.08 → 1.0 centered
-        zoom_expr = f"zoompan=z='if(eq(on,1),1.08,max(1.0,zoom-0.08/{total_frames}))':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        # Zoom out 1+z → 1.0 centered
+        zoom_expr = f"zoompan=z='if(eq(on,1),{zmax4},max(1.0,zoom-{z4}/{total_frames}))':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.PAN_LEFT:
-        # Pan right-to-left at constant zoom 1.05; x sweeps full extra-space width
-        zoom_expr = f"zoompan=z='1.05':d={total_frames}:x='(iw-iw/zoom)*({total_frames}-on)/{total_frames}':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        # Pan right-to-left at constant zoom; x sweeps the extra-space width
+        zoom_expr = f"zoompan=z='{pan4}':d={total_frames}:x='(iw-iw/zoom)*({total_frames}-on)/{total_frames}':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.PAN_RIGHT:
-        # Pan left-to-right at constant zoom 1.05
-        zoom_expr = f"zoompan=z='1.05':d={total_frames}:x='(iw-iw/zoom)*on/{total_frames}':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        # Pan left-to-right at constant zoom
+        zoom_expr = f"zoompan=z='{pan4}':d={total_frames}:x='(iw-iw/zoom)*on/{total_frames}':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.ZOOM_IN_LEFT:
-        # Zoom in 1.0 → 1.08, anchored to left edge
-        zoom_expr = f"zoompan=z='min(1.0+0.08*on/{total_frames},1.08)':d={total_frames}:x='0':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        # Zoom in 1.0 → 1+z, anchored to left edge
+        zoom_expr = f"zoompan=z='min(1.0+{z4}*on/{total_frames},{zmax4})':d={total_frames}:x='0':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.ZOOM_IN_RIGHT:
-        # Zoom in 1.0 → 1.08, anchored to right edge
-        zoom_expr = f"zoompan=z='min(1.0+0.08*on/{total_frames},1.08)':d={total_frames}:x='iw-iw/zoom':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        # Zoom in 1.0 → 1+z, anchored to right edge
+        zoom_expr = f"zoompan=z='min(1.0+{z4}*on/{total_frames},{zmax4})':d={total_frames}:x='iw-iw/zoom':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.ZOOM_OUT_LEFT:
-        # Zoom out 1.08 → 1.0, anchored to left edge
-        zoom_expr = f"zoompan=z='if(eq(on,1),1.08,max(1.0,zoom-0.08/{total_frames}))':d={total_frames}:x='0':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        # Zoom out 1+z → 1.0, anchored to left edge
+        zoom_expr = f"zoompan=z='if(eq(on,1),{zmax4},max(1.0,zoom-{z4}/{total_frames}))':d={total_frames}:x='0':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.ZOOM_OUT_RIGHT:
-        # Zoom out 1.08 → 1.0, anchored to right edge
-        zoom_expr = f"zoompan=z='if(eq(on,1),1.08,max(1.0,zoom-0.08/{total_frames}))':d={total_frames}:x='iw-iw/zoom':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        # Zoom out 1+z → 1.0, anchored to right edge
+        zoom_expr = f"zoompan=z='if(eq(on,1),{zmax4},max(1.0,zoom-{z4}/{total_frames}))':d={total_frames}:x='iw-iw/zoom':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.TILT_UP:
-        # Pan bottom-to-top at constant zoom 1.05
-        zoom_expr = f"zoompan=z='1.05':d={total_frames}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*on/{total_frames}':s={width}x{height}:fps={fps}"
+        # Pan bottom-to-top at constant zoom
+        zoom_expr = f"zoompan=z='{pan4}':d={total_frames}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*on/{total_frames}':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.TILT_DOWN:
-        # Pan top-to-bottom at constant zoom 1.05
-        zoom_expr = f"zoompan=z='1.05':d={total_frames}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*({total_frames}-on)/{total_frames}':s={width}x{height}:fps={fps}"
+        # Pan top-to-bottom at constant zoom
+        zoom_expr = f"zoompan=z='{pan4}':d={total_frames}:x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*({total_frames}-on)/{total_frames}':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.CUT_IN:
-        # Punch-in: starts already tight (1.30) and keeps pushing to 1.36.
-        zoom_expr = f"zoompan=z='min(1.30+0.06*on/{total_frames},1.36)':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        # Punch-in: opens already tight and keeps pushing in.
+        zoom_expr = f"zoompan=z='min({cut0s}+{cutpushs}*on/{total_frames},{cut1s})':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.CUT_OUT:
-        # Pull-back: starts tight (1.30) and eases out towards 1.22.
-        zoom_expr = f"zoompan=z='if(eq(on,1),1.30,max(1.22,zoom-0.06/{total_frames}))':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
+        # Pull-back: opens tight and eases out.
+        zoom_expr = f"zoompan=z='if(eq(on,1),{cut0s},max({cutbacks},zoom-{cutpushs}/{total_frames}))':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps}"
         return f"{base_scale},{zoom_expr}"
 
     elif motion == MotionType.CAMERA_DRIFT:
-        # Very subtle drift with gentle zoom 1.0 → 1.04
+        # Gentle drift with a slow push — always the subtlest move
         zoom_expr = (
-            f"zoompan=z='min(1.0+0.04*on/{total_frames},1.04)'"
+            f"zoompan=z='min(1.0+{z4}*0.5*on/{total_frames},{drift4})'"
             f":d={total_frames}"
-            f":x='iw/2-(iw/zoom/2)+iw/zoom*0.01*sin(2*PI*on/{total_frames})'"
-            f":y='ih/2-(ih/zoom/2)+ih/zoom*0.008*cos(2*PI*on/{total_frames})'"
+            f":x='iw/2-(iw/zoom/2)+iw/zoom*{drift_amp}*sin(2*PI*on/{total_frames})'"
+            f":y='ih/2-(ih/zoom/2)+ih/zoom*{drift_amp}*0.7*cos(2*PI*on/{total_frames})'"
             f":s={width}x{height}:fps={fps}"
         )
         return f"{base_scale},{zoom_expr}"

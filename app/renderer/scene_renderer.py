@@ -8,9 +8,11 @@ import hashlib
 from pathlib import Path
 from typing import Callable, Optional
 
-from app.core.config import ExportSettings, MotionType, get_config
+from app.core.config import ExportSettings, MotionType, TransitionType, get_config
 from app.core.project import Project, SceneConfig, OverlayItem, is_clip_path
+from app.transitions.engine import resolve_transition
 from app.ffmpeg.wrapper import (image_to_video, add_audio_to_video, mp4_to_clip,
+                                _run_ffmpeg,
                                 concatenate_videos, has_audio_stream)
 from app.renderer.motion import get_motion_filter, resolve_scene_motion
 from app.tts.voice_manager import VoiceManager
@@ -134,6 +136,31 @@ def _first_media_of(scene) -> Optional[str]:
             return str(p)
     img = getattr(scene, "image", None)
     return str(img) if img else None
+
+
+def _trim_dead_air(src: Path, dst: Path) -> Path:
+    """Strip the TTS clip's own leading/trailing silence.
+
+    TTS engines pad each line with ~0.35s of dead air at both ends. Left in, every
+    beat carries that padding, so the narration reads as stop-start instead of one
+    continuous script. Only near-digital silence (-50 dB) is removed, and 0.02s of
+    head / 0.08s of tail are kept so the first and last words are never clipped.
+    Returns the trimmed file, or the original if anything goes wrong.
+    """
+    if dst.exists() and dst.stat().st_size > 2048:
+        return dst
+    af = ("silenceremove=start_periods=1:start_silence=0.02:start_threshold=-50dB,"
+          "areverse,"
+          "silenceremove=start_periods=1:start_silence=0.08:start_threshold=-50dB,"
+          "areverse")
+    try:
+        _run_ffmpeg(["-i", str(src), "-af", af, "-c:a", "libmp3lame", "-b:a", "192k", str(dst)],
+                    description=f"Trim dead air ({src.name})")
+        if dst.exists() and dst.stat().st_size > 2048:
+            return dst
+    except Exception as e:  # never fail a render over an audio tidy-up
+        log.warning(f"  ⚠ Dead-air trim skipped ({e})")
+    return src
 
 
 def _find_overlay_start(timestamp_info: Optional[dict], overlay_text: str) -> float:
@@ -671,7 +698,10 @@ class SceneRenderer:
                           + "|" + str(getattr(self.project.config, "mute_original", False))
                           + "|" + str(getattr(self.project.config, "music_loop", True))
                           + "|" + str(getattr(self.project.config, "whoosh", False))
-                          + "|" + str(getattr(self.project.config, "whoosh_volume", None))),
+                          + "|" + str(getattr(self.project.config, "whoosh_volume", None))
+                          + "|" + str(getattr(self.project.config, "motion_zoom", None))
+                          + "|" + str(getattr(self.project.config, "trim_voice_silence", True))
+                          + "|" + str(getattr(self.project.config, "transition", None))),
             timing=str(getattr(self.project.config, "duration_padding", None))
                    + "|" + str(getattr(self.project.config, "picture_cut_seconds", None))
                    + "|" + str(getattr(self.project.config, "transition_duration", None))
@@ -732,6 +762,18 @@ class SceneRenderer:
             # Brief pause between TTS API calls to avoid rate limiting
             await asyncio.sleep(2)
 
+        # Trim the line's own dead air so beats hand over to each other with only
+        # the "Gap after each line" between them (skipped when word timestamps are
+        # needed, because trimming would shift their offsets).
+        if getattr(self.project.config, "trim_voice_silence", True) and not tts_word_timestamps:
+            _trimmed = _trim_dead_air(audio_path, self._work_dir / f"{prefix}_{cache_key}_voice_trim.mp3")
+            if _trimmed != audio_path:
+                _before = tts_result_duration
+                audio_path = _trimmed
+                tts_result_duration = get_audio_duration(audio_path)
+                log.info(f"  Voice tidy: {_before:.2f}s → {tts_result_duration:.2f}s "
+                         f"(trimmed {_before - tts_result_duration:.2f}s of TTS dead air)")
+
         _progress("Voiceover complete", 0.4)
 
         # ── Step 2: Calculate scene duration ─────────────────────────
@@ -749,21 +791,44 @@ class SceneRenderer:
         if t_dur is None:
             t_dur = 0.5
 
-        target_duration = tts_result_duration + padding + t_dur
+        # Ken Burns strength for this project — the dashboard's "Image motion"
+        # control. 0 = frozen stills, 0.25 = the strong attention-grabbing moves.
+        motion_zoom = getattr(self.project.config, "motion_zoom", None)
+        if motion_zoom is None:
+            motion_zoom = 0.25
 
-        # BEAT LENGTH — the pipeline's unit is an 8-second beat (60 beats = 8:00).
-        # When beat_seconds is set, every beat's picture is exactly that long:
-        # a short narration line holds its shot for the rest of the beat, and a
-        # line longer than the beat is never cut (the voice always wins).
+        # Which transition closes this beat? Cross-fade/dissolve OVERLAP the two
+        # clips, so those need extra media on every clip or the blend eats the
+        # narration. Dip-to-black and cuts fade in place and need none — and not
+        # adding it is exactly what stops an 8s clip being padded into a loop.
+        scene_transition = resolve_transition(
+            scene_transition=getattr(scene, "transition", None),
+            project_transition=self.project.config.transition,
+        )
+        overlap_pad = (
+            t_dur
+            if scene_transition not in (TransitionType.NONE, TransitionType.DIP_TO_BLACK)
+            else 0.0
+        )
+
+        # FOLLOW THE VOICE — the narration sets the clock: each beat lasts its own
+        # line plus the gap you asked for. beat_seconds is a MINIMUM (a very short
+        # line still gets a full beat); it is never a target that stretches media.
+        target_duration = tts_result_duration + padding + overlap_pad
+
+        # BEAT MINIMUM — the pipeline's unit is an 8-second beat (60 beats = 8:00).
+        # When beat_seconds is set, a line shorter than that holds its picture for
+        # the rest of the beat; a line longer than the beat is never cut (the voice
+        # always wins).
         beat_target = scene.beat_seconds
         if beat_target is None:
             beat_target = getattr(self.project.config, "beat_seconds", None)
         if beat_target is None:
             beat_target = get_config().render.beat_seconds
         if beat_target and beat_target > 0:
-            if target_duration < beat_target + t_dur:
-                target_duration = beat_target + t_dur
-            log.info(f"  Beat length: {beat_target:.2f}s "
+            if target_duration < beat_target + overlap_pad:
+                target_duration = beat_target + overlap_pad
+            log.info(f"  Beat minimum: {beat_target:.2f}s "
                      f"(voice {tts_result_duration:.2f}s)")
 
         if overlay_text:
@@ -780,7 +845,7 @@ class SceneRenderer:
                 last_overlay_end = max(trigger_times) + type_duration + vanish_delay if trigger_times else 0.3
             else:
                 last_overlay_end = _find_overlay_start(tts_word_timestamps, overlay_text) + type_duration + vanish_delay
-            required_for_overlay = last_overlay_end + t_dur
+            required_for_overlay = last_overlay_end + overlap_pad
             if target_duration < required_for_overlay:
                 target_duration = required_for_overlay
                 log.info(f"  Extended scene duration to {target_duration:.1f}s to allow overlay to finish.")
@@ -804,6 +869,7 @@ class SceneRenderer:
             height=self.export.height,
             duration=scene_duration,
             fps=self.export.fps,
+            zoom=motion_zoom,
         )
 
         if is_mp4:
@@ -898,6 +964,19 @@ class SceneRenderer:
             overlay_filters = list(overlay_filters or []) + [color_chain]
             log.info(f"  Color grade: {color_chain}")
 
+        # DIP TO BLACK — the picture fades out at the tail of this beat and back in
+        # at the head of the next. Nothing overlaps, so no media repeats and the
+        # timeline stays exact; the narration deliberately keeps running through
+        # the dip, which is what makes the script sound continuous.
+        if scene_transition == TransitionType.DIP_TO_BLACK and t_dur and t_dur > 0:
+            _half = max(0.0, min(t_dur / 2.0, scene_duration / 2.0 - 0.01))
+            if _half > 0:
+                overlay_filters = list(overlay_filters or []) + [
+                    f"fade=t=in:st=0:d={_half:.3f}",
+                    f"fade=t=out:st={max(0.0, scene_duration - _half):.3f}:d={_half:.3f}",
+                ]
+                log.info(f"  Transition: dip to black ({_half * 2:.2f}s) — picture only, voice keeps running")
+
         loop = asyncio.get_event_loop()
 
         # ── Beat pictures: one beat covered by several lettered images ──────
@@ -927,6 +1006,7 @@ class SceneRenderer:
                     height=self.export.height,
                     duration=per_pic,
                     fps=self.export.fps,
+                    zoom=motion_zoom,
                 )
                 part = self._work_dir / f"{prefix}_{cache_key}_pic{k}.mp4"
                 if is_clip_path(src):
@@ -1017,6 +1097,7 @@ class SceneRenderer:
                         height=self.export.height,
                         duration=per_shot,
                         fps=self.export.fps,
+                        zoom=motion_zoom,
                     )
                     part = self._work_dir / f"{prefix}_{cache_key}_shot{k}.mp4"
                     await loop.run_in_executor(

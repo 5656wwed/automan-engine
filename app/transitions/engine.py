@@ -126,6 +126,14 @@ def apply_transitions(
         log.info("No transitions — using simple concatenation.")
         return _fallback_concat(clip_paths, output_path, export)
 
+    # DIP TO BLACK is done INSIDE each scene (the picture fades out at the tail and
+    # back in at the head — see scene_renderer), so the merge itself must not
+    # overlap anything: an xfade would re-show the outgoing shot and swallow
+    # narration. Concatenate instead: exact timeline, nothing repeats.
+    if all(t in (TransitionType.NONE, TransitionType.DIP_TO_BLACK) for t in transition_types):
+        log.info("Dip to black — concatenating (dips are baked into each scene).")
+        return _fallback_concat(clip_paths, output_path, export)
+
     # For large projects, chunk the merge to keep each FFmpeg call manageable.
     # Each chunk of ≤15 clips is merged with xfade, then all chunks are concat'd.
     if n > _XFADE_CHUNK_SIZE:

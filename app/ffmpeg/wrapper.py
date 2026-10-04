@@ -185,12 +185,27 @@ def mp4_to_clip(
     # The final `-t duration` trims the (possibly looped) stream down to
     # exactly the narration length.
     input_loop = []
+    hold_last = 0.0
     if src_duration > 0 and src_duration < duration:
-        input_loop = ["-stream_loop", "-1"]
-        log.info(
-            f"  [mp4_to_clip] {Path(video_path).name}: "
-            f"{src_duration:.1f}s < narration {duration:.1f}s → looping to fill"
-        )
+        shortfall = duration - src_duration
+        if shortfall <= max(0.75, src_duration * 0.15):
+            # Tiny gap — e.g. an 8.0s clip dropped into an 8.2s beat. HOLD the last
+            # frame instead of looping: a loop restarts the clip, and the eye reads
+            # that as "the last shot came back" for a split second right at the cut
+            # (it also fights the transition). Holding is invisible.
+            hold_last = shortfall
+            log.info(
+                f"  [mp4_to_clip] {Path(video_path).name}: "
+                f"{src_duration:.1f}s < beat {duration:.1f}s → holding last frame "
+                f"for {shortfall:.2f}s"
+            )
+        else:
+            # Big gap: a repeated loop reads as natural b-roll and fills it cleanly.
+            input_loop = ["-stream_loop", "-1"]
+            log.info(
+                f"  [mp4_to_clip] {Path(video_path).name}: "
+                f"{src_duration:.1f}s < narration {duration:.1f}s → looping to fill"
+            )
     else:
         log.info(
             f"  [mp4_to_clip] {Path(video_path).name}: "
@@ -198,6 +213,9 @@ def mp4_to_clip(
         )
 
     filters.append(f"fps={fps}")
+
+    if hold_last > 0:
+        filters.append(f"tpad=stop_mode=clone:stop_duration={hold_last:.3f}")
 
     if overlay_filters:
         filters.extend(overlay_filters)
