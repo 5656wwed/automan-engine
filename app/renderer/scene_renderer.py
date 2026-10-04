@@ -699,6 +699,7 @@ class SceneRenderer:
                           + "|" + str(getattr(self.project.config, "music_loop", True))
                           + "|" + str(getattr(self.project.config, "whoosh", False))
                           + "|" + str(getattr(self.project.config, "whoosh_volume", None))
+                          + "|" + str(getattr(self.project.config, "whoosh_mode", None) or "")
                           + "|" + str(getattr(self.project.config, "motion_zoom", None))
                           + "|" + str(getattr(self.project.config, "trim_voice_silence", True))
                           + "|" + str(getattr(self.project.config, "transition", None))),
@@ -912,23 +913,33 @@ class SceneRenderer:
             else:
                 log.warning("  Overlay skipped: font file not found in project/font/")
 
-        # ── Whoosh on the video -> image cut ────────────────────────────────
-        # The dashboard copies <project>/sfx/whoosh.mp3 in when the "Whoosh on
-        # cuts" toggle is on. It fires at 0.0 s of a beat whose own picture is a
-        # STILL while the beat before it was a CLIP: that boundary is exactly the
-        # moving-footage -> still transition, and the whoosh glues the two
-        # mediums together instead of letting the image read as a freeze.
-        if sfx_path is None and bool(getattr(self.project.config, "whoosh", False)):
+        # ── Whoosh on the cuts ──────────────────────────────────────────────
+        # whoosh_mode: "off" | "video_to_image" | "every_cut". The dashboard copies
+        # <project>/sfx/whoosh.mp3 in when it's on. "video_to_image" fires where a
+        # beat's picture is a STILL and the beat before it was a CLIP (moving
+        # footage -> frozen photo, the cut that needs covering); "every_cut" also
+        # fires between two stills, so image runs get the same glue. The first beat
+        # never gets one — there is no cut before it.
+        _wmode = str(getattr(self.project.config, "whoosh_mode", "") or "").lower()
+        if _wmode not in ("off", "video_to_image", "every_cut"):
+            _wmode = "video_to_image" if bool(getattr(self.project.config, "whoosh", False)) else "off"
+
+        if sfx_path is None and _wmode != "off" and scene_index > 0:
             _w = _find_sfx(self.project.project_dir)
             _scenes = getattr(self.project, "scenes", None) or []
             _prev = _scenes[scene_index - 1] if 0 < scene_index < len(_scenes) else None
             _here, _before = _first_media_of(scene), _first_media_of(_prev)
-            if (_w and _here and not is_clip_path(_here)
-                    and _before and is_clip_path(_before)):
+            _fire = False
+            if _w and _here:
+                if _wmode == "every_cut":
+                    _fire = True
+                elif not is_clip_path(_here) and _before and is_clip_path(_before):
+                    _fire = True
+            if _fire:
                 sfx_path     = _w
                 sfx_delay_ms = 0
                 sfx_volume   = float(getattr(self.project.config, "whoosh_volume", 0.55) or 0.55)
-                log.info(f"  Whoosh : video -> image cut at 0.000s (vol={sfx_volume:.0%})")
+                log.info(f"  Whoosh : {_wmode} cut at 0.000s (vol={sfx_volume:.0%})")
 
         if getattr(self.project.config, "subtitles_enabled", False) and scene.script:
             sub_font = _find_subtitle_font(self.project.project_dir, font_path=font_path)

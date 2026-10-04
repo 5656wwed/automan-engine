@@ -189,6 +189,7 @@ class ProjectConfig(BaseModel):
     music_loop: bool = True              # loop the music if it's shorter than the clip
     whoosh: bool = False                 # mix sfx/whoosh.mp3 on the video->image cut
     whoosh_volume: float = Field(default=0.55, ge=0.0, le=1.0)
+    whoosh_mode: Optional[str] = None    # "off" | "video_to_image" | "every_cut"
     motion_zoom: float = Field(default=0.25, ge=0.0, le=0.5)  # Ken Burns strength (0=still, 0.25=strong)
     trim_voice_silence: bool = True      # strip each TTS line's own dead air
     scenes: list[SceneConfig] = Field(min_length=1)
