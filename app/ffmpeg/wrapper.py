@@ -145,12 +145,19 @@ def mp4_to_clip(
     duration: float,
     export: ExportSettings | None = None,
     overlay_filters: Optional[list[str]] = None,
+    short_policy: str = "slow",
 ) -> None:
-    """Scale, pad, time-stretch (if short), and trim an MP4 to scene duration.
+    """Scale, fill, retime (if short) and trim an MP4 to exactly `duration`.
 
-    - MP4 longer than duration  → trimmed with -t (fast, no re-timing).
-    - MP4 shorter than duration → slowed via setpts so it fills exactly
-      duration seconds. No frame interpolation; timestamps are scaled.
+    - MP4 longer than duration → trimmed with -t (fast, no re-timing).
+    - MP4 shorter than duration → `short_policy` decides what fills the gap:
+        "slow" (default) — retime with setpts so the clip plays a little slower and
+            lasts the whole beat. The picture never repeats and never freezes; a
+            1.2–1.6x stretch is invisible on b-roll. Stretches beyond 2x would
+            judder, so past that it stretches 2x and holds the rest.
+        "hold" — freeze on the last frame for the shortfall.
+        "loop" — repeat the clip from the start (the old default; the eye reads the
+            restart as "the last shot came back" right before the cut).
     Audio is always stripped (-an); add_audio_to_video mixes TTS + the
     original MP4 audio at attenuated volume separately.
     """
@@ -179,39 +186,48 @@ def mp4_to_clip(
             f"crop={width}:{height}",
         ]
 
-    # If the clip is shorter than the narration, LOOP it (continuous
-    # cycle) instead of stretching it. Stretching produces ugly slow-motion;
-    # a repeating loop reads as natural b-roll and fills the gap cleanly.
-    # The final `-t duration` trims the (possibly looped) stream down to
-    # exactly the narration length.
     input_loop = []
     hold_last = 0.0
+    retime = 0.0
+    policy = str(short_policy or "slow").strip().lower()
+    if policy not in ("slow", "hold", "loop"):
+        policy = "slow"
+    _name = Path(video_path).name
+
     if src_duration > 0 and src_duration < duration:
         shortfall = duration - src_duration
-        if shortfall <= max(0.75, src_duration * 0.15):
-            # Tiny gap — e.g. an 8.0s clip dropped into an 8.2s beat. HOLD the last
-            # frame instead of looping: a loop restarts the clip, and the eye reads
-            # that as "the last shot came back" for a split second right at the cut
-            # (it also fights the transition). Holding is invisible.
-            hold_last = shortfall
-            log.info(
-                f"  [mp4_to_clip] {Path(video_path).name}: "
-                f"{src_duration:.1f}s < beat {duration:.1f}s → holding last frame "
-                f"for {shortfall:.2f}s"
-            )
-        else:
-            # Big gap: a repeated loop reads as natural b-roll and fills it cleanly.
+        if policy == "loop":
             input_loop = ["-stream_loop", "-1"]
             log.info(
-                f"  [mp4_to_clip] {Path(video_path).name}: "
-                f"{src_duration:.1f}s < narration {duration:.1f}s → looping to fill"
+                f"  [mp4_to_clip] {_name}: {src_duration:.1f}s < beat {duration:.1f}s "
+                f"→ repeating the clip to fill (Repeat the clip is selected)"
+            )
+        elif policy == "hold" or shortfall <= max(0.75, src_duration * 0.15):
+            # Tiny gap (e.g. an 8.0s clip in an 8.2s beat) is ALWAYS held: a loop
+            # restarts the clip and the eye reads it as the shot coming back.
+            hold_last = shortfall
+            log.info(
+                f"  [mp4_to_clip] {_name}: {src_duration:.1f}s < beat {duration:.1f}s "
+                f"→ holding last frame for {shortfall:.2f}s"
+            )
+        else:
+            # Slow it down to fill the beat: continuous motion, no repeat, no freeze.
+            retime = duration / src_duration
+            if retime > 2.0:
+                retime = 2.0
+                hold_last = max(0.0, duration - src_duration * retime)
+            log.info(
+                f"  [mp4_to_clip] {_name}: {src_duration:.1f}s < beat {duration:.1f}s "
+                f"→ slowing to {retime:.2f}x to fill (no repeat)"
+                + (f", then holding {hold_last:.2f}s" if hold_last > 0.01 else "")
             )
     else:
         log.info(
-            f"  [mp4_to_clip] {Path(video_path).name}: "
-            f"{src_duration:.1f}s → trimming to {duration:.1f}s"
+            f"  [mp4_to_clip] {_name}: {src_duration:.1f}s → trimming to {duration:.1f}s"
         )
 
+    if retime > 0:
+        filters.append(f"setpts=PTS*{retime:.6f}")
     filters.append(f"fps={fps}")
 
     if hold_last > 0:

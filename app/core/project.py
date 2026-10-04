@@ -192,6 +192,7 @@ class ProjectConfig(BaseModel):
     whoosh_mode: Optional[str] = None    # "off" | "video_to_image" | "every_cut"
     motion_zoom: float = Field(default=0.25, ge=0.0, le=0.5)  # Ken Burns strength (0=still, 0.25=strong)
     trim_voice_silence: bool = True      # strip each TTS line's own dead air
+    short_clip_policy: str = "slow"      # clip shorter than its beat: "slow" | "hold" | "loop"
     scenes: list[SceneConfig] = Field(min_length=1)
 
     @field_validator("scenes")

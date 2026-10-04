@@ -702,6 +702,7 @@ class SceneRenderer:
                           + "|" + str(getattr(self.project.config, "whoosh_mode", None) or "")
                           + "|" + str(getattr(self.project.config, "motion_zoom", None))
                           + "|" + str(getattr(self.project.config, "trim_voice_silence", True))
+                          + "|" + str(getattr(self.project.config, "short_clip_policy", "slow"))
                           + "|" + str(getattr(self.project.config, "transition", None))),
             timing=str(getattr(self.project.config, "duration_padding", None))
                    + "|" + str(getattr(self.project.config, "picture_cut_seconds", None))
@@ -1028,6 +1029,7 @@ class SceneRenderer:
                             output_path=p,
                             duration=per_pic,
                             export=self.export,
+                            short_policy=getattr(self.project.config, "short_clip_policy", "slow"),
                         ),
                     )
                 else:
@@ -1062,6 +1064,7 @@ class SceneRenderer:
                     duration=scene_duration,
                     export=self.export,
                     overlay_filters=overlay_filters,
+                    short_policy=getattr(self.project.config, "short_clip_policy", "slow"),
                 ),
             )
         else:
