@@ -157,6 +157,10 @@ class AppConfig(BaseModel):
     openai_api_key: Optional[str] = None
     ai33pro_api_key: Optional[str] = None
     fish_audio_api_key: Optional[str] = None
+    # Extra Fish Audio voices shown in the narrator list: public/shared model ids
+    # pasted on the dashboard (a fish.audio link or a bare 32-char id). Your own
+    # account voices are listed separately by the engine.
+    fish_extra_voices: list[str] = Field(default_factory=list)
     inworld_api_key: Optional[str] = None
     groq_api_key: Optional[str] = None
     inworld_custom_voices: list[dict[str, str]] = Field(default_factory=list)
