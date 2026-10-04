@@ -187,6 +187,8 @@ class ProjectConfig(BaseModel):
     music_volume: Optional[float] = Field(default=None, ge=0.0, le=1.0)  # 0-1
     mute_original: bool = False          # drop the clip's own audio
     music_loop: bool = True              # loop the music if it's shorter than the clip
+    whoosh: bool = False                 # mix sfx/whoosh.mp3 on the video->image cut
+    whoosh_volume: float = Field(default=0.55, ge=0.0, le=1.0)
     scenes: list[SceneConfig] = Field(min_length=1)
 
     @field_validator("scenes")

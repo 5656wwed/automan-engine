@@ -125,6 +125,17 @@ def _find_sfx(project_dir: Path) -> Optional[Path]:
     return sfx if sfx.exists() else None
 
 
+def _first_media_of(scene) -> Optional[str]:
+    """The file a beat opens with: its first beat picture, else its image."""
+    if scene is None:
+        return None
+    for p in (getattr(scene, "images", None) or []):
+        if p:
+            return str(p)
+    img = getattr(scene, "image", None)
+    return str(img) if img else None
+
+
 def _find_overlay_start(timestamp_info: Optional[dict], overlay_text: str) -> float:
     """Find when the first word of overlay_text is spoken. Returns seconds."""
     if not timestamp_info:
@@ -658,7 +669,9 @@ class SceneRenderer:
             music_cfg=str((getattr(self.project.config, "music_name", None) or "")
                           + "|" + str(getattr(self.project.config, "music_volume", None) or "")
                           + "|" + str(getattr(self.project.config, "mute_original", False))
-                          + "|" + str(getattr(self.project.config, "music_loop", True))),
+                          + "|" + str(getattr(self.project.config, "music_loop", True))
+                          + "|" + str(getattr(self.project.config, "whoosh", False))
+                          + "|" + str(getattr(self.project.config, "whoosh_volume", None))),
             timing=str(getattr(self.project.config, "duration_padding", None))
                    + "|" + str(getattr(self.project.config, "picture_cut_seconds", None))
                    + "|" + str(getattr(self.project.config, "transition_duration", None))
@@ -802,6 +815,7 @@ class SceneRenderer:
         overlay_filters = []
         sfx_path        = None
         sfx_delay_ms    = 0
+        sfx_volume      = None
 
         if overlay_text:
             if font_path:
@@ -828,8 +842,27 @@ class SceneRenderer:
                     log.info(f"  Overlay: '{overlay_text}' at {overlay_start:.3f}s")
                 sfx_path     = _find_sfx(self.project.project_dir)
                 sfx_delay_ms = int(overlay_start * 1000)
+                sfx_volume   = get_config().overlay_sfx_volume
             else:
                 log.warning("  Overlay skipped: font file not found in project/font/")
+
+        # ── Whoosh on the video -> image cut ────────────────────────────────
+        # The dashboard copies <project>/sfx/whoosh.mp3 in when the "Whoosh on
+        # cuts" toggle is on. It fires at 0.0 s of a beat whose own picture is a
+        # STILL while the beat before it was a CLIP: that boundary is exactly the
+        # moving-footage -> still transition, and the whoosh glues the two
+        # mediums together instead of letting the image read as a freeze.
+        if sfx_path is None and bool(getattr(self.project.config, "whoosh", False)):
+            _w = _find_sfx(self.project.project_dir)
+            _scenes = getattr(self.project, "scenes", None) or []
+            _prev = _scenes[scene_index - 1] if 0 < scene_index < len(_scenes) else None
+            _here, _before = _first_media_of(scene), _first_media_of(_prev)
+            if (_w and _here and not is_clip_path(_here)
+                    and _before and is_clip_path(_before)):
+                sfx_path     = _w
+                sfx_delay_ms = 0
+                sfx_volume   = float(getattr(self.project.config, "whoosh_volume", 0.55) or 0.55)
+                log.info(f"  Whoosh : video -> image cut at 0.000s (vol={sfx_volume:.0%})")
 
         if getattr(self.project.config, "subtitles_enabled", False) and scene.script:
             sub_font = _find_subtitle_font(self.project.project_dir, font_path=font_path)
@@ -1025,7 +1058,7 @@ class SceneRenderer:
         # ── Step 4: Overlay audio onto video ─────────────────────────
         _sfx      = sfx_path
         _delay    = sfx_delay_ms
-        _vol      = get_config().overlay_sfx_volume if overlay_text else 0.55
+        _vol      = sfx_volume if sfx_volume is not None else 0.55
         _bg_audio = (Path(scene.image)
                      if (is_mp4 and has_audio_stream(scene.image)) else None)
         if is_mp4 and _bg_audio is None:
