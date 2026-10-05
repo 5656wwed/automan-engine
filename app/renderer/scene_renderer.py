@@ -55,6 +55,33 @@ def _alternate_motion(base_motion, index: int) -> MotionType:
     return _WIDE_FOR.get(base, MotionType.ZOOM_IN)   # back out to a wide shot
 
 
+def _voice_cache_key(
+    provider: Optional[str],
+    voice_id: Optional[str],
+    script: str,
+    tts_kwargs: dict,
+    want_timestamps: bool = False,
+) -> str:
+    """Cache key for the synthesized voiceover — audio inputs ONLY.
+
+    Deliberately excludes everything visual (motion, clip policy, transitions,
+    resolution, colour): re-cutting the picture must reuse the narration instead
+    of paying for the whole script again.
+    """
+    from app.tts.pronunciation import pronunciation_version
+
+    parts = [
+        "voice_v1",
+        provider or "",
+        voice_id or "",
+        script or "",
+        repr(sorted(tts_kwargs.items())),
+        str(bool(want_timestamps)),
+        pronunciation_version(),
+    ]
+    return hashlib.md5("|".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
 def _scene_cache_key(
     provider: Optional[str],
     voice_id: Optional[str],
@@ -727,12 +754,18 @@ class SceneRenderer:
                 except Exception:
                     pass
 
-        audio_path = self._work_dir / f"{prefix}_{cache_key}_voice.mp3"
-        timestamps_path = self._work_dir / f"{prefix}_{cache_key}_voice.json"
-
         want_timestamps = (overlay_text is not None) or getattr(self.project.config, "subtitles_enabled", False)
 
+        # Voice audio is cached on the AUDIO inputs only (voice, script, TTS params)
+        # — not on the picture settings. Changing the clip policy, transitions,
+        # motion or resolution used to rename every voice file, so a re-render
+        # re-synthesized 68 lines (~90 s each on Fish Audio) for no reason.
+        audio_key = _voice_cache_key(provider, voice_id, scene.script, tts_kwargs, want_timestamps)
+        audio_path = self._work_dir / f"{prefix}_{audio_key}_voice.mp3"
+        timestamps_path = self._work_dir / f"{prefix}_{audio_key}_voice.json"
+
         if audio_path.exists() and (not want_timestamps or timestamps_path.exists()) and get_config().render.cache_audio:
+            log.info(f"  Voice : reusing cached voiceover ({audio_path.name})")
             tts_result_duration = get_audio_duration(audio_path)
             if timestamps_path.exists():
                 try:
