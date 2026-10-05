@@ -14,7 +14,30 @@ from app.utils.logger import get_logger
 log = get_logger("tts.fishaudio")
 
 BASE_URL = "https://api.fish.audio"
-DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=15)
+# The free/slow Fish models can take minutes on a long narration line: measured
+# ~0.5 s per character, so a 245-char scene line took 118 s. A flat small timeout
+# (this was 15 s) killed the FIRST scene of every render with an empty message,
+# because asyncio.TimeoutError stringifies to "". Budget per request instead.
+MIN_TIMEOUT = 120      # seconds — floor for short lines
+MAX_TIMEOUT = 900      # seconds — ceiling so a hung request cannot stall forever
+SECONDS_PER_CHAR = 1.5  # ~3x the measured 0.5 s/char, headroom for load
+DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=MIN_TIMEOUT)
+
+
+def _timeout_for(text: str) -> aiohttp.ClientTimeout:
+    """Timeout sized to the narration length, not a fixed guess."""
+    budget = min(MAX_TIMEOUT, max(MIN_TIMEOUT, int(len(text or "") * SECONDS_PER_CHAR)))
+    return aiohttp.ClientTimeout(total=budget, sock_connect=30, sock_read=budget)
+
+
+def _describe(e: BaseException) -> str:
+    """Never return an empty message — asyncio.TimeoutError str()s to ''."""
+    msg = str(e).strip()
+    return f"{type(e).__name__}: {msg}" if msg else f"{type(e).__name__} (no message from the server)"
+
+
+class FishRetryableError(RuntimeError):
+    """Transient Fish Audio failure (timeout, 429, 5xx) — safe to retry."""
 
 
 class FishAudioProvider(TTSProvider):
@@ -72,19 +95,48 @@ class FishAudioProvider(TTSProvider):
             "normalize": True,
         }
 
-        async with aiohttp.ClientSession(timeout=DEFAULT_TIMEOUT) as session:
-            async with session.post(url, headers=headers, json=payload) as resp:
-                if resp.status != 200:
-                    try:
-                        err_data = await resp.json()
-                        error_msg = err_data.get("message", "Unknown error")
-                    except:
-                        error_msg = await resp.text()
-                    raise RuntimeError(f"Fish Audio TTS failed: {error_msg}")
+        timeout = _timeout_for(text)
+        attempts = max(1, int(kwargs.get("retries", 1)) + 1)
+        audio_bytes = b""
+        for attempt in range(1, attempts + 1):
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(url, headers=headers, json=payload) as resp:
+                        if resp.status != 200:
+                            try:
+                                err_data = await resp.json()
+                                error_msg = (err_data.get("message") or err_data.get("detail")
+                                             or str(err_data))
+                            except Exception:
+                                error_msg = (await resp.text())[:300]
+                            msg = f"Fish Audio TTS failed: HTTP {resp.status} — {error_msg}"
+                            if resp.status in (408, 429, 500, 502, 503, 504):
+                                raise FishRetryableError(msg)
+                            raise RuntimeError(msg)
 
-                audio_bytes = await resp.read()
-                with open(output_path, "wb") as f:
-                    f.write(audio_bytes)
+                        audio_bytes = await resp.read()
+                break
+            except RuntimeError as e:
+                if not isinstance(e, FishRetryableError) or attempt >= attempts:
+                    raise
+                log.warning(f"Fish Audio TTS attempt {attempt}/{attempts}: {e}")
+                await asyncio.sleep(3 * attempt)
+            except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+                log.warning(f"Fish Audio TTS attempt {attempt}/{attempts} failed ({_describe(e)}); "
+                            f"budget was {timeout.total}s for {len(text)} chars")
+                if attempt >= attempts:
+                    raise RuntimeError(
+                        f"Fish Audio TTS failed after {attempts} attempt(s): {_describe(e)}. "
+                        f"The voice/key are fine — the API was too slow for this line "
+                        f"({len(text)} chars, {timeout.total}s allowed), or the connection dropped."
+                    )
+                await asyncio.sleep(3 * attempt)
+
+        if not audio_bytes:
+            raise RuntimeError("Fish Audio TTS returned no audio data.")
+
+        with open(output_path, "wb") as f:
+            f.write(audio_bytes)
 
         from app.utils.audio import get_audio_duration
         duration = get_audio_duration(output_path)

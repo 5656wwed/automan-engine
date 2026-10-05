@@ -108,7 +108,10 @@ def render(
         console.print(f"\n[bold green]✓ Done![/] Output: [underline]{result}[/]")
 
     except Exception as e:
-        console.print(f"\n[bold red]✗ Error:[/] {e}")
+        # Some exceptions (asyncio.TimeoutError) stringify to "", which made
+        # every failed render print a bare "✗ Error:" with no cause.
+        msg = str(e).strip()
+        console.print(f"\n[bold red]✗ Error:[/] {msg or f'{type(e).__name__} (no message)'}")
         raise typer.Exit(code=1)
 
 
