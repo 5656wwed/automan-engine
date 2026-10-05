@@ -11,7 +11,7 @@ from typing import Optional
 
 from app.core.config import ExportSettings, TransitionType, get_config
 from app.core.exceptions import TransitionError
-from app.ffmpeg.detector import get_ffmpeg_path
+from app.ffmpeg.detector import get_ffmpeg_path, get_ffprobe_path
 from app.ffmpeg.wrapper import get_media_duration
 from app.utils.logger import get_logger
 
@@ -19,7 +19,15 @@ log = get_logger("transitions.engine")
 
 # Maximum clips per xfade batch — above this we chunk+concat to avoid
 # FFmpeg memory exhaustion and command-line length limits.
-_XFADE_CHUNK_SIZE = 15
+#
+# Do NOT raise this back to 15. On the ffmpeg builds tested here (9.0.1), a
+# xfade chain nested more than one level deep silently drops the tail of the
+# VIDEO stream while keeping the audio: a 15-clip chunk of 133 s came out with
+# 31 s of picture and the player froze on its last frame for the remaining
+# 61 s (exactly the "an image stays stuck for a minute" complaint). Three clips
+# = two xfade steps = one nesting level, which is correct (measured 25.40 s for
+# 25.37 s of input). Every chunk is duration-verified after merging anyway.
+_XFADE_CHUNK_SIZE = 3
 
 # Map our TransitionType enums to FFmpeg xfade transition names
 _XFADE_MAP = {
@@ -38,6 +46,54 @@ _RANDOM_POOL = [
     TransitionType.DIP_TO_BLACK,
     TransitionType.CINEMATIC_BLUR,
 ]
+
+
+def _stream_durations(path: Path) -> tuple[float, float]:
+    """(video, audio) stream durations of a container — 0.0 when a stream is absent.
+
+    Reads the STREAM durations, not the container's: a container can claim 90 s
+    while its video stream really holds 31 s of frames.
+    """
+    ffprobe = get_ffprobe_path()
+    video = audio = 0.0
+    try:
+        r = subprocess.run(
+            [str(ffprobe), "-v", "error", "-show_entries", "stream=codec_type,duration",
+             "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, timeout=180,
+        )
+        for line in (r.stdout or "").splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) < 2:
+                continue
+            kind, raw = parts[0], parts[1]
+            try:
+                dur = float(raw)
+            except ValueError:
+                continue
+            if kind == "video":
+                video = max(video, dur)
+            elif kind == "audio":
+                audio = max(audio, dur)
+    except Exception:
+        pass
+    return video, audio
+
+
+def _merge_is_sound(path: Path, tolerance: float = 1.0) -> tuple[bool, float, float]:
+    """True when a merged file's video stream is not shorter than its audio.
+
+    A chained xfade silently drops the tail of the video stream on some builds
+    while the audio keeps going: the container looks right (audio length) but the
+    picture FREEZES on its last frame for the missing seconds — the classic
+    "some images stay stuck for a minute" complaint. Anything merged here is
+    verified before it is accepted.
+    """
+    video, audio = _stream_durations(path)
+    if video <= 0.0 or audio <= 0.0:
+        return True, video, audio  # cannot judge (silent or video-only) — leave it
+    return video >= audio - tolerance, video, audio
+
 
 
 def resolve_transition(
@@ -137,9 +193,21 @@ def apply_transitions(
     # For large projects, chunk the merge to keep each FFmpeg call manageable.
     # Each chunk of ≤15 clips is merged with xfade, then all chunks are concat'd.
     if n > _XFADE_CHUNK_SIZE:
-        return _chunked_merge(clip_paths, output_path, transition_types, transition_duration, export)
+        result = _chunked_merge(clip_paths, output_path, transition_types, transition_duration, export)
+    else:
+        result = _xfade_merge(clip_paths, output_path, transition_types, transition_duration, export)
 
-    return _xfade_merge(clip_paths, output_path, transition_types, transition_duration, export)
+    # A chained xfade can silently drop the video tail (audio keeps going, so the
+    # picture freezes for minutes). Never hand over a film whose picture is
+    # shorter than its sound: hard-cut concat instead — the timeline stays exact.
+    ok, video, audio = _merge_is_sound(result)
+    if not ok:
+        log.warning(
+            f"  xfade produced a shorter picture than sound ({video:.1f}s video vs "
+            f"{audio:.1f}s audio) — re-merging with hard cuts so nothing freezes."
+        )
+        return _fallback_concat(clip_paths, output_path, export)
+    return result
 
 
 def _xfade_merge(
@@ -262,6 +330,16 @@ def _chunked_merge(
             _fallback_concat(chunk_clips, chunk_out, export)
         else:
             _xfade_merge(chunk_clips, chunk_out, chunk_trans, transition_duration, export)
+            # A bad xfade chunk keeps its audio but loses the tail of its picture,
+            # which plays as a long frozen frame. Verify and rebuild that chunk
+            # with hard cuts instead of shipping the freeze.
+            ok, v_dur, a_dur = _merge_is_sound(chunk_out)
+            if not ok:
+                log.warning(
+                    f"  Chunk {chunk_num + 1}: xfade left {v_dur:.1f}s of picture for "
+                    f"{a_dur:.1f}s of sound — rebuilding this chunk with hard cuts."
+                )
+                _fallback_concat(chunk_clips, chunk_out, export)
 
         chunk_outputs.append(chunk_out)
         idx = end
