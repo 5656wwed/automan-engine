@@ -8,7 +8,17 @@ Their title is fetched from the Fish Audio API so the dropdown shows a real name
 """
 import asyncio
 import json
+import sys
 import urllib.request
+
+# Windows defaults a piped stdout to the locale code page (cp1252): printing a
+# non-ASCII Fish voice title (e.g. 美区克隆) then raises UnicodeEncodeError and the
+# caller gets EMPTY stdout. Force UTF-8 so this script's JSON always arrives.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 from app.core.config import load_config
 from app.tts.voice_manager import VoiceManager
