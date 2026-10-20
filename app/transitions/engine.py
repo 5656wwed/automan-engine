@@ -239,21 +239,34 @@ def _xfade_merge(
         filter_parts.append(
             f"[0:v][1:v]xfade=transition={xfade_name}:duration={transition_duration}:offset={offsets[0]}[vout]"
         )
-        audio_parts.append(f"[0:a][1:a]acrossfade=d={transition_duration}[aout]")
     else:
-        prev_v, prev_a = "[0:v]", "[0:a]"
+        prev_v = "[0:v]"
         for i in range(n - 1):
             xfade_name = _XFADE_MAP.get(transition_types[i], "fade")
             next_v = f"[v{i}]" if i < n - 2 else "[vout]"
-            next_a = f"[a{i}]" if i < n - 2 else "[aout]"
             filter_parts.append(
                 f"{prev_v}[{i + 1}:v]xfade=transition={xfade_name}"
                 f":duration={transition_duration}:offset={offsets[i]}{next_v}"
             )
-            audio_parts.append(
-                f"{prev_a}[{i + 1}:a]acrossfade=d={transition_duration}{next_a}"
-            )
-            prev_v, prev_a = next_v, next_a
+            prev_v = next_v
+
+    # AUDIO — never crossfade the narration. Every scene's audio is padded to
+    # voice + gap + transition_duration, so the outgoing clip's last
+    # transition_duration seconds are SILENCE. An acrossfade therefore multiplied
+    # the NEXT line's opening by a fade-in curve: measured on a real render, the
+    # first 100 ms of the incoming line sat at -15 dB and only reached full level
+    # after ~0.5 s — every line sounded like it was swallowed/glitched at the cut.
+    # Trim that silence and concatenate instead: the words are untouched, and the
+    # total length still matches the xfaded picture (sum(dur) - n-1 overlaps).
+    for i, d in enumerate(durations):
+        end = max(0.0, d - (transition_duration if i < n - 1 else 0.0))
+        audio_parts.append(
+            f"[{i}:a]atrim=0:{end:.3f},asetpts=N/SR/TB,"
+            f"aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]"
+        )
+    audio_parts.append(
+        "".join(f"[a{i}]" for i in range(n)) + f"concat=n={n}:v=0:a=1[aout]"
+    )
 
     filter_complex = ";".join(filter_parts + audio_parts)
     output_path.parent.mkdir(parents=True, exist_ok=True)
