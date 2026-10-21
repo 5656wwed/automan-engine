@@ -628,19 +628,21 @@ def _video_flags(export):
         q = getattr(export, "quality", None)
         qv = getattr(q, "value", None) if q is not None else None
         nv_preset = {"low": "p1", "medium": "p3", "high": "p4", "ultra": "p6"}.get(qv, "p4")
+        # -bf 0: xfade silently truncates chunks whose inputs carry B-frames
+        # (ffmpeg 9.0.1, measured: 8.5 s + 8.5 s at offset 8.0 → 8.5 s of picture).
         return ["-c:v", codec, "-rc", "vbr", "-cq", str(export.crf),
-                "-b:v", "0", "-preset", nv_preset]
+                "-b:v", "0", "-preset", nv_preset, "-bf", "0"]
     if "qsv" in codec:
         q = getattr(export, "quality", None)
         qv = getattr(q, "value", None) if q is not None else None
         qsv_preset = {"low": "veryfast", "medium": "medium", "high": "slow", "ultra": "veryslow"}.get(qv, "medium")
         return ["-c:v", codec, "-global_quality", str(export.crf),
-                "-preset", qsv_preset, "-look_ahead", "0"]
+                "-preset", qsv_preset, "-look_ahead", "0", "-bf", "0"]
     if "amf" in codec:
         q = getattr(export, "quality", None)
         qv = getattr(q, "value", None) if q is not None else None
         amf_preset = {"low": "speed", "medium": "balanced", "high": "quality", "ultra": "quality"}.get(qv, "balanced")
         return ["-c:v", codec, "-rc", "cqp", "-qp_i", str(export.crf),
                 "-qp_p", str(export.crf), "-quality", amf_preset]
-    return ["-c:v", codec, "-crf", str(export.crf), "-preset", export.preset_speed]
+    return ["-c:v", codec, "-crf", str(export.crf), "-preset", export.preset_speed, "-bf", "0"]
 

@@ -226,27 +226,41 @@ def _xfade_merge(
     for p in clip_paths:
         inputs.extend(["-i", str(p)])
 
+    # Frame-rate normalisation is MANDATORY. A scene is cut to an arbitrary voice
+    # length (e.g. 7.299674 s = 219 frames), so its average frame rate is not
+    # exactly the export fps (29.997 here). xfade does not fail on that — it emits
+    # the tail of the FIRST input only, so the chunk silently comes out seconds
+    # short (measured: 7.30 s for 15.30 s of input) and the picture freezes under
+    # the narration. Forcing CFR + quantising every duration to whole frames makes
+    # the xfade chain exact.
+    fps = export.fps
+    qdur = [round(d * fps) / fps for d in durations]
+
     filter_parts = []
     audio_parts = []
     cumulative_dur = 0.0
     offsets = []
     for i in range(n - 1):
-        cumulative_dur += durations[i]
+        cumulative_dur += qdur[i]
         offsets.append(max(cumulative_dur - transition_duration * (i + 1), 0))
+
+    for i in range(n):
+        filter_parts.append(f"[{i}:v]setsar=1[vn{i}]")
 
     if n == 2:
         xfade_name = _XFADE_MAP.get(transition_types[0], "fade")
         filter_parts.append(
-            f"[0:v][1:v]xfade=transition={xfade_name}:duration={transition_duration}:offset={offsets[0]}[vout]"
+            f"[vn0][vn1]xfade=transition={xfade_name}:duration={transition_duration}"
+            f":offset={offsets[0]:.6f}[vout]"
         )
     else:
-        prev_v = "[0:v]"
+        prev_v = "[vn0]"
         for i in range(n - 1):
             xfade_name = _XFADE_MAP.get(transition_types[i], "fade")
             next_v = f"[v{i}]" if i < n - 2 else "[vout]"
             filter_parts.append(
-                f"{prev_v}[{i + 1}:v]xfade=transition={xfade_name}"
-                f":duration={transition_duration}:offset={offsets[i]}{next_v}"
+                f"{prev_v}[vn{i + 1}]xfade=transition={xfade_name}"
+                f":duration={transition_duration}:offset={offsets[i]:.6f}{next_v}"
             )
             prev_v = next_v
 
@@ -299,7 +313,7 @@ def _xfade_merge(
         # 2. narration: each clip minus its (silent) overlap tail, then joined
         parts = []
         for i, p in enumerate(clip_paths):
-            end = max(0.01, durations[i] - (transition_duration if i < n - 1 else 0.0))
+            end = max(0.01, qdur[i] - (transition_duration if i < n - 1 else 0.0))
             part = tmp_dir / f"a{i:03d}.wav"
             _run(
                 [ffmpeg, "-y", "-hide_banner", "-i", str(p), "-vn",
@@ -327,6 +341,49 @@ def _xfade_merge(
              "-ar", "44100", "-ac", "2", str(output_path)],
             "mux", 900,
         )
+
+        # 4. xfade on this ffmpeg build silently truncates any input that carries
+        #    B-frames (measured: 8.5s + 8.5s merged to 8.5s of picture). Scenes
+        #    rendered before the "-bf 0" flag existed still have them, so rebuild
+        #    the chunk from B-frame-free copies and fade again before falling back
+        #    to hard cuts.
+        ok, v_dur, a_dur = _merge_is_sound(output_path, tolerance=0.25)
+        if not ok:
+            log.warning(
+                f"  xfade left {v_dur:.1f}s of picture for {a_dur:.1f}s of sound — "
+                f"retrying these {n} clips without B-frames."
+            )
+            norm_inputs = []
+            for i, p in enumerate(clip_paths):
+                nb = tmp_dir / f"nb_{i:02d}.mp4"
+                _run(
+                    [ffmpeg, "-y", "-hide_banner", "-i", str(p), "-an",
+                     *_video_flags(export), "-bf", "0",
+                     "-pix_fmt", export.pixel_format, str(nb)],
+                    f"strip B-frames {i + 1}", 900,
+                )
+                norm_inputs.extend(["-i", str(nb)])
+            _run(
+                [ffmpeg, "-y", "-hide_banner", *norm_inputs,
+                 "-filter_complex", filter_complex, "-map", "[vout]", "-an",
+                 *_video_flags(export), "-bf", "0",
+                 "-pix_fmt", export.pixel_format, str(tmp_video)],
+                "video xfade (no B-frames)", 1800,
+            )
+            _run(
+                [ffmpeg, "-y", "-hide_banner", "-i", str(tmp_video), "-i", str(tmp_audio),
+                 "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+                 "-c:a", export.audio_codec, "-b:a", export.audio_bitrate,
+                 "-ar", "44100", "-ac", "2", str(output_path)],
+                "mux (no B-frames)", 900,
+            )
+            ok, v_dur, a_dur = _merge_is_sound(output_path, tolerance=0.25)
+            if not ok:
+                log.warning(
+                    f"  still short after stripping B-frames ({v_dur:.1f}s picture / "
+                    f"{a_dur:.1f}s sound) — hard cuts for this chunk."
+                )
+                return _fallback_concat(clip_paths, output_path, export)
 
         log.info(f"  xfade merged {n} clips → {output_path.name}")
         return output_path
