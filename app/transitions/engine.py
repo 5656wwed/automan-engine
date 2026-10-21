@@ -255,53 +255,89 @@ def _xfade_merge(
     # transition_duration seconds are SILENCE. An acrossfade therefore multiplied
     # the NEXT line's opening by a fade-in curve: measured on a real render, the
     # first 100 ms of the incoming line sat at -15 dB and only reached full level
-    # after ~0.5 s — every line sounded like it was swallowed/glitched at the cut.
-    # Trim that silence and concatenate instead: the words are untouched, and the
-    # total length still matches the xfaded picture (sum(dur) - n-1 overlaps).
-    for i, d in enumerate(durations):
-        end = max(0.0, d - (transition_duration if i < n - 1 else 0.0))
-        audio_parts.append(
-            f"[{i}:a]atrim=0:{end:.3f},asetpts=N/SR/TB,"
-            f"aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]"
-        )
-    audio_parts.append(
-        "".join(f"[a{i}]" for i in range(n)) + f"concat=n={n}:v=0:a=1[aout]"
-    )
-
-    filter_complex = ";".join(filter_parts + audio_parts)
+    # after ~0.5 s — every line sounded swallowed at the cut.
+    #
+    # Trimming the silence and concatenating keeps the words untouched and the
+    # total length equal to the xfaded picture. It is done in three steps because
+    # a multi-input `concat` FILTER deadlocks against the xfade chain (ffmpeg
+    # stalls until the 30-minute timeout and the chunk silently degrades to hard
+    # cuts): (1) xfade the picture alone, (2) trim each clip's silent tail and
+    # join the parts with the concat DEMUXER, (3) mux the two streams together.
+    filter_complex = ";".join(filter_parts)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-    cmd = [
-        ffmpeg, "-y", "-hide_banner",
-        *inputs,
-        "-filter_complex", filter_complex,
-        "-map", "[vout]", "-map", "[aout]",
-        *_video_flags(export),
-        "-c:a", export.audio_codec, "-b:a", export.audio_bitrate,
-        "-ar", "44100",
-        "-ac", "2",
-        "-pix_fmt", export.pixel_format,
-        str(output_path),
-    ]
+    import shutil
 
-    try:
+    tmp_dir = output_path.parent / f"_xf_{output_path.stem}"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_video = tmp_dir / "video.mp4"
+    tmp_audio = tmp_dir / "audio.wav"
+
+    creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
+    def _run(cmd: list, description: str, timeout: int) -> None:
         result = subprocess.run(
             cmd,
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
-            timeout=1800,  # 30 min per chunk
+            timeout=timeout,
             creationflags=creationflags,
         )
         if result.returncode != 0:
-            log.warning("xfade merge failed, falling back to concat.")
-            return _fallback_concat(clip_paths, output_path, export)
+            raise RuntimeError(f"{description} failed: {result.stderr[-600:]}")
+
+    try:
+        # 1. picture: the xfade chain, no audio at all
+        _run(
+            [ffmpeg, "-y", "-hide_banner", *inputs,
+             "-filter_complex", filter_complex, "-map", "[vout]", "-an",
+             *_video_flags(export), "-pix_fmt", export.pixel_format, str(tmp_video)],
+            "video xfade", 1800,
+        )
+
+        # 2. narration: each clip minus its (silent) overlap tail, then joined
+        parts = []
+        for i, p in enumerate(clip_paths):
+            end = max(0.01, durations[i] - (transition_duration if i < n - 1 else 0.0))
+            part = tmp_dir / f"a{i:03d}.wav"
+            _run(
+                [ffmpeg, "-y", "-hide_banner", "-i", str(p), "-vn",
+                 "-af", "aformat=sample_fmts=s16:sample_rates=44100:channel_layouts=stereo",
+                 "-t", f"{end:.3f}", "-c:a", "pcm_s16le", str(part)],
+                f"audio part {i + 1}", 300,
+            )
+            parts.append(part)
+
+        list_file = tmp_dir / "parts.txt"
+        list_file.write_text(
+            "".join(f"file '{q.as_posix()}'\n" for q in parts), encoding="utf-8"
+        )
+        _run(
+            [ffmpeg, "-y", "-hide_banner", "-f", "concat", "-safe", "0",
+             "-i", str(list_file), "-c:a", "pcm_s16le", str(tmp_audio)],
+            "audio concat", 900,
+        )
+
+        # 3. put the picture and the narration back together (no re-encode)
+        _run(
+            [ffmpeg, "-y", "-hide_banner", "-i", str(tmp_video), "-i", str(tmp_audio),
+             "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+             "-c:a", export.audio_codec, "-b:a", export.audio_bitrate,
+             "-ar", "44100", "-ac", "2", str(output_path)],
+            "mux", 900,
+        )
+
         log.info(f"  xfade merged {n} clips → {output_path.name}")
         return output_path
     except subprocess.TimeoutExpired:
         log.warning(f"xfade timed out for {n} clips, falling back to concat.")
         return _fallback_concat(clip_paths, output_path, export)
+    except Exception as exc:
+        log.warning(f"xfade merge failed ({exc}), falling back to concat.")
+        return _fallback_concat(clip_paths, output_path, export)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def _chunked_merge(
