@@ -245,7 +245,7 @@ def _xfade_merge(
         offsets.append(max(cumulative_dur - transition_duration * (i + 1), 0))
 
     for i in range(n):
-        filter_parts.append(f"[{i}:v]setsar=1[vn{i}]")
+        filter_parts.append(f"[{i}:v]fps={fps},setsar=1,setpts=PTS-STARTPTS[vn{i}]")
 
     if n == 2:
         xfade_name = _XFADE_MAP.get(transition_types[0], "fade")
